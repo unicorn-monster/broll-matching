@@ -46,3 +46,9 @@ next-env.d.ts
 public/uploads
 
 nul
+
+# brainstorm mockups
+.superpowers/
+
+# git worktrees
+.worktrees/
