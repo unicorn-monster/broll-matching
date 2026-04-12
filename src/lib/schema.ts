@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, index } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, index, uuid, varchar, integer, bigint } from "drizzle-orm/pg-core";
 
 // IMPORTANT! ID fields should ALWAYS use UUID types, EXCEPT the BetterAuth tables.
 
@@ -79,4 +79,34 @@ export const verification = pgTable("verification", {
     .defaultNow()
     .$onUpdate(() => /* @__PURE__ */ new Date())
     .notNull(),
+});
+
+// B-Roll Auto Assembly tables
+
+export const products = pgTable("products", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const tags = pgTable("tags", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  productId: uuid("product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 100 }).notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const clips = pgTable("clips", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tagId: uuid("tag_id").notNull().references(() => tags.id, { onDelete: "cascade" }),
+  filename: varchar("filename", { length: 255 }).notNull(),
+  durationMs: integer("duration_ms").notNull(),
+  width: integer("width").notNull(),
+  height: integer("height").notNull(),
+  indexeddbKey: varchar("indexeddb_key", { length: 255 }).notNull(),
+  fileSizeBytes: bigint("file_size_bytes", { mode: "number" }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
