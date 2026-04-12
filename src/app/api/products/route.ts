@@ -1,5 +1,3 @@
-import { headers } from "next/headers";
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { products, tags, clips } from "@/lib/schema";
 import { eq, count, desc } from "drizzle-orm";
@@ -26,11 +24,6 @@ const DEFAULT_TAGS = [
 ];
 
 export async function GET() {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const rows = await db
     .select({
       id: products.id,
@@ -42,7 +35,6 @@ export async function GET() {
     .from(products)
     .leftJoin(tags, eq(tags.productId, products.id))
     .leftJoin(clips, eq(clips.tagId, tags.id))
-    .where(eq(products.userId, session.user.id))
     .groupBy(products.id, products.name, products.createdAt, products.updatedAt)
     .orderBy(desc(products.updatedAt));
 
@@ -54,11 +46,6 @@ const createProductSchema = z.object({
 });
 
 export async function POST(req: Request) {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   let body: unknown;
   try {
     body = await req.json();
@@ -71,12 +58,12 @@ export async function POST(req: Request) {
     return Response.json({ error: "Invalid request", details: parsed.error.flatten() }, { status: 400 });
   }
 
-  const [product] = await db
+  const inserted = await db
     .insert(products)
-    .values({ name: parsed.data.name, userId: session.user.id })
+    .values({ name: parsed.data.name })
     .returning();
+  const product = inserted[0]!;
 
-  // Auto-create 17 default tags
   await db.insert(tags).values(
     DEFAULT_TAGS.map((name, i) => ({
       productId: product.id,

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useSession } from "@/lib/auth-client";
 import { NewProductDialog } from "@/components/products/new-product-dialog";
 import { ProductCard } from "@/components/products/product-card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,7 +15,6 @@ interface Product {
 }
 
 export default function DashboardPage() {
-  const { data: session, isPending: sessionPending } = useSession();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -24,34 +22,15 @@ export default function DashboardPage() {
     setLoading(true);
     try {
       const res = await fetch("/api/products");
-      if (res.ok) {
-        const data = await res.json();
-        setProducts(data);
-      }
+      if (res.ok) setProducts(await res.json());
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    if (session) fetchProducts();
-  }, [session, fetchProducts]);
-
-  if (sessionPending) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-muted-foreground text-sm">Loading...</div>
-      </div>
-    );
-  }
-
-  if (!session) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-muted-foreground text-sm">Please sign in to continue.</div>
-      </div>
-    );
-  }
+    fetchProducts();
+  }, [fetchProducts]);
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-6xl">
