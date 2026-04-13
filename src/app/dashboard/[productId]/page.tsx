@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TagSidebar } from "@/components/broll/tag-sidebar";
 import { ClipGrid } from "@/components/broll/clip-grid";
+import { BuildVideo } from "@/components/build/build-video";
 
 interface Product {
   id: string;
@@ -140,9 +141,7 @@ export default function ProductWorkspacePage() {
         </TabsContent>
 
         <TabsContent value="build" className="flex-1 mt-0 overflow-y-auto">
-          <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
-            Build Video — coming in Phase 6
-          </div>
+          <BuildVideo productId={productId} />
         </TabsContent>
       </Tabs>
     </div>
