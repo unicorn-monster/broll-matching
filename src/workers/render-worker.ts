@@ -10,10 +10,9 @@ self.onmessage = async (e: MessageEvent) => {
   } = e.data;
 
   const ffmpeg = new FFmpeg();
-  const baseURL = "https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd";
   await ffmpeg.load({
-    coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
-    wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm"),
+    coreURL: await toBlobURL("/ffmpeg/ffmpeg-core.js", "text/javascript"),
+    wasmURL: await toBlobURL("/ffmpeg/ffmpeg-core.wasm", "application/wasm"),
   });
 
   const totalSections = timeline.length;

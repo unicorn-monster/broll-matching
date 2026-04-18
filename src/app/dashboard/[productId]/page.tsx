@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
 import { FolderSidebar, type Folder } from "@/components/broll/folder-sidebar";
 import { ClipGrid } from "@/components/broll/clip-grid";
 
@@ -70,12 +69,7 @@ export default function WorkspacePage() {
     : clips;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)]">
-      <div className="border-b border-border px-4 flex gap-4">
-        <Link href={`/dashboard/${productId}`} className="py-3 text-sm font-medium border-b-2 border-primary">Library</Link>
-        <Link href={`/dashboard/${productId}/build`} className="py-3 text-sm font-medium text-muted-foreground hover:text-foreground">Build Video</Link>
-      </div>
-      <div className="flex flex-1 overflow-hidden">
+    <div className="flex flex-1 overflow-hidden">
         <FolderSidebar
           folders={folders}
           activeFolderId={activeFolderId}
@@ -95,6 +89,5 @@ export default function WorkspacePage() {
           />
         </main>
       </div>
-    </div>
   );
 }

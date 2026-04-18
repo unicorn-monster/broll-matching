@@ -52,3 +52,16 @@ nul
 
 # git worktrees
 .worktrees/
+
+# claude-code local artifacts
+.claude/plan/
+.claude/settings.json
+
+# playwright-cli ephemeral session data
+.playwright-cli/
+
+# local-hosted ffmpeg wasm (32MB — fetched/copied manually, see README)
+/public/ffmpeg/
+
+# demo screenshots
+/demo-*.png
