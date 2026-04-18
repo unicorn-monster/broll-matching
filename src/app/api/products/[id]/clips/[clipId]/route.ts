@@ -1,16 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/session";
 import { db } from "@/lib/db";
-import { products, clips, folders } from "@/lib/schema";
+import { clips, folders } from "@/lib/schema";
 import { eq, and } from "drizzle-orm";
 import { isValidBrollName } from "@/lib/broll";
 
-async function assertClipOwnership(productId: string, clipId: string, userId: string) {
-  const [p] = await db
-    .select({ id: products.id })
-    .from(products)
-    .where(and(eq(products.id, productId), eq(products.userId, userId)));
-  if (!p) return null;
+async function getClip(productId: string, clipId: string) {
   const [clip] = await db
     .select()
     .from(clips)
@@ -22,9 +16,8 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; clipId: string }> },
 ) {
-  const session = await requireAuth();
   const { id, clipId } = await params;
-  const clip = await assertClipOwnership(id, clipId, session.user.id);
+  const clip = await getClip(id, clipId);
   if (!clip) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const body = await req.json();
@@ -63,12 +56,11 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: Promise<{ id: string; clipId: string }> },
 ) {
-  const session = await requireAuth();
   const { id, clipId } = await params;
-  const clip = await assertClipOwnership(id, clipId, session.user.id);
+  const clip = await getClip(id, clipId);
   if (!clip) return NextResponse.json({ error: "Not found" }, { status: 404 });
   await db.delete(clips).where(eq(clips.id, clipId));
   return NextResponse.json({ deletedClipId: clipId });

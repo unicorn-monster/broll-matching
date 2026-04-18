@@ -1,29 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/session";
 import { db } from "@/lib/db";
 import { products, clips } from "@/lib/schema";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
-async function getOwnedProduct(productId: string, userId: string) {
-  const [product] = await db
-    .select()
-    .from(products)
-    .where(and(eq(products.id, productId), eq(products.userId, userId)));
+async function getProduct(productId: string) {
+  const [product] = await db.select().from(products).where(eq(products.id, productId));
   return product ?? null;
 }
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAuth();
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const product = await getOwnedProduct(id, session.user.id);
+  const product = await getProduct(id);
   if (!product) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json(product);
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAuth();
   const { id } = await params;
-  const product = await getOwnedProduct(id, session.user.id);
+  const product = await getProduct(id);
   if (!product) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const { name } = await req.json();
   if (!name?.trim()) return NextResponse.json({ error: "Name required" }, { status: 400 });
@@ -35,10 +29,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   return NextResponse.json(updated);
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAuth();
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const product = await getOwnedProduct(id, session.user.id);
+  const product = await getProduct(id);
   if (!product) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const clipRows = await db
     .select({ id: clips.id })

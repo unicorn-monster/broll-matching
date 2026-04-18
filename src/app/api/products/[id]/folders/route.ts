@@ -1,21 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/session";
 import { db } from "@/lib/db";
 import { products, folders, clips } from "@/lib/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
-async function assertOwnership(productId: string, userId: string) {
-  const [p] = await db
-    .select({ id: products.id })
-    .from(products)
-    .where(and(eq(products.id, productId), eq(products.userId, userId)));
-  return p ?? null;
+async function productExists(productId: string): Promise<boolean> {
+  const [p] = await db.select({ id: products.id }).from(products).where(eq(products.id, productId));
+  return Boolean(p);
 }
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAuth();
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  if (!(await assertOwnership(id, session.user.id))) {
+  if (!(await productExists(id))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
   const rows = await db
@@ -35,9 +30,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAuth();
   const { id } = await params;
-  if (!(await assertOwnership(id, session.user.id))) {
+  if (!(await productExists(id))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
   const { name } = await req.json();

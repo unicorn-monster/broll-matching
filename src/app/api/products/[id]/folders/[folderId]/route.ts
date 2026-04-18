@@ -1,15 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/session";
 import { db } from "@/lib/db";
-import { products, folders, clips } from "@/lib/schema";
+import { folders, clips } from "@/lib/schema";
 import { eq, and } from "drizzle-orm";
 
-async function assertFolderOwnership(productId: string, folderId: string, userId: string) {
-  const [p] = await db
-    .select({ id: products.id })
-    .from(products)
-    .where(and(eq(products.id, productId), eq(products.userId, userId)));
-  if (!p) return null;
+async function getFolder(productId: string, folderId: string) {
   const [f] = await db
     .select()
     .from(folders)
@@ -21,9 +15,8 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; folderId: string }> },
 ) {
-  const session = await requireAuth();
   const { id, folderId } = await params;
-  const folder = await assertFolderOwnership(id, folderId, session.user.id);
+  const folder = await getFolder(id, folderId);
   if (!folder) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const { name } = await req.json();
   if (!name?.trim()) return NextResponse.json({ error: "Name required" }, { status: 400 });
@@ -40,12 +33,11 @@ export async function PUT(
 }
 
 export async function DELETE(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: Promise<{ id: string; folderId: string }> },
 ) {
-  const session = await requireAuth();
   const { id, folderId } = await params;
-  const folder = await assertFolderOwnership(id, folderId, session.user.id);
+  const folder = await getFolder(id, folderId);
   if (!folder) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const clipRows = await db
     .select({ id: clips.id })

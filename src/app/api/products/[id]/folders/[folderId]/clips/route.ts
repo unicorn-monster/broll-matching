@@ -1,36 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/session";
 import { db } from "@/lib/db";
-import { products, folders, clips } from "@/lib/schema";
+import { folders, clips } from "@/lib/schema";
 import { eq, and } from "drizzle-orm";
 import { isValidBrollName } from "@/lib/broll";
 
-async function assertFolderOwnership(productId: string, folderId: string, userId: string) {
-  const [p] = await db
-    .select({ id: products.id })
-    .from(products)
-    .where(and(eq(products.id, productId), eq(products.userId, userId)));
-  if (!p) return null;
+async function folderExists(productId: string, folderId: string): Promise<boolean> {
   const [f] = await db
     .select({ id: folders.id })
     .from(folders)
     .where(and(eq(folders.id, folderId), eq(folders.productId, productId)));
-  return f ?? null;
+  return Boolean(f);
 }
 
 export async function GET(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: Promise<{ id: string; folderId: string }> },
 ) {
-  const session = await requireAuth();
   const { id, folderId } = await params;
-  if (!(await assertFolderOwnership(id, folderId, session.user.id))) {
+  if (!(await folderExists(id, folderId))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
   const rows = await db
     .select()
     .from(clips)
-    .where(and(eq(clips.folderId, folderId), eq(clips.productId, id)))
+    .where(eq(clips.folderId, folderId))
     .orderBy(clips.brollName);
   return NextResponse.json(rows);
 }
@@ -39,9 +32,8 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; folderId: string }> },
 ) {
-  const session = await requireAuth();
   const { id, folderId } = await params;
-  if (!(await assertFolderOwnership(id, folderId, session.user.id))) {
+  if (!(await folderExists(id, folderId))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
   const body = await req.json();
