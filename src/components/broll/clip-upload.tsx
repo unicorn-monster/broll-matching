@@ -60,12 +60,37 @@ export function ClipUpload({ productId, folderId, onDone }: ClipUploadProps) {
     if (!readyRows.length) return;
     setUploading(true);
 
-    const ffmpeg = await loadFFmpeg();
+    let ffmpeg;
+    try {
+      console.log("[upload] loading ffmpeg…");
+      ffmpeg = await loadFFmpeg();
+      console.log("[upload] ffmpeg loaded");
+    } catch (err) {
+      console.error("[upload] ffmpeg load failed:", err);
+      setRows((prev) =>
+        prev.map((r) =>
+          r.status === "ready"
+            ? { ...r, status: "error", error: `ffmpeg load: ${String(err)}` }
+            : r,
+        ),
+      );
+      setUploading(false);
+      return;
+    }
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       if (row.status !== "ready") continue;
       updateRow(i, { status: "uploading", progress: 0 });
+
+      let durationMs = 0;
+      const logHandler = ({ message }: { type: string; message: string }) => {
+        if (durationMs > 0) return;
+        const m = message.match(/Duration:\s+(\d+):(\d+):(\d+(?:\.\d+)?)/);
+        if (!m) return;
+        const [, h, min, sec] = m;
+        durationMs = Math.round((Number(h) * 3600 + Number(min) * 60 + Number(sec)) * 1000);
+      };
 
       try {
         const inputName = `input-${i}.mp4`;
@@ -75,23 +100,32 @@ export function ClipUpload({ productId, folderId, onDone }: ClipUploadProps) {
         await ffmpeg.writeFile(inputName, await fetchFile(row.file));
         updateRow(i, { progress: 20 });
 
-        await ffmpeg.exec([
-          "-i", inputName,
-          "-vf", "scale=1080:1350:force_original_aspect_ratio=decrease,pad=1080:1350:(ow-iw)/2:(oh-ih)/2",
-          "-c:v", "libx264", "-preset", "fast", "-an",
-          outputName,
-        ]);
-        updateRow(i, { progress: 60 });
+        ffmpeg.on("log", logHandler);
+        try {
+          await ffmpeg.exec([
+            "-i", inputName,
+            "-vf", "scale=1080:1350:force_original_aspect_ratio=decrease,pad=1080:1350:(ow-iw)/2:(oh-ih)/2",
+            "-c:v", "libx264", "-preset", "fast", "-an",
+            outputName,
+          ]);
+          updateRow(i, { progress: 60 });
 
-        await ffmpeg.exec([
-          "-i", inputName, "-ss", "00:00:01", "-frames:v", "1", "-f", "image2", thumbName,
-        ]);
+          await ffmpeg.exec([
+            "-i", inputName, "-ss", "00:00:01", "-frames:v", "1", "-f", "image2", thumbName,
+          ]);
+        } finally {
+          ffmpeg.off("log", logHandler);
+        }
         updateRow(i, { progress: 70 });
+
+        if (!durationMs) {
+          throw new Error("could not parse duration from ffmpeg log");
+        }
 
         const videoData = await ffmpeg.readFile(outputName) as Uint8Array;
         const thumbData = await ffmpeg.readFile(thumbName) as Uint8Array;
 
-        const duration = await getVideoDurationMs(row.file);
+        const duration = durationMs;
 
         const clipId = crypto.randomUUID();
         await saveClip(clipId, videoData.buffer as ArrayBuffer);
@@ -126,6 +160,7 @@ export function ClipUpload({ productId, folderId, onDone }: ClipUploadProps) {
 
         updateRow(i, { status: "done", progress: 100 });
       } catch (err) {
+        console.error(`[upload] row ${i} (${row.brollName}) failed:`, err);
         updateRow(i, { status: "error", error: String(err) });
       }
     }
@@ -213,14 +248,3 @@ export function ClipUpload({ productId, folderId, onDone }: ClipUploadProps) {
   );
 }
 
-async function getVideoDurationMs(file: File): Promise<number> {
-  return new Promise((resolve) => {
-    const video = document.createElement("video");
-    video.preload = "metadata";
-    video.onloadedmetadata = () => {
-      URL.revokeObjectURL(video.src);
-      resolve(Math.round(video.duration * 1000));
-    };
-    video.src = URL.createObjectURL(file);
-  });
-}
