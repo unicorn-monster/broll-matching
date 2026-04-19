@@ -29,8 +29,10 @@ self.onmessage = async (e: MessageEvent) => {
       if (matched.isPlaceholder) {
         await ffmpeg.exec([
           "-f", "lavfi",
-          "-i", `color=c=black:s=1080x1350:d=${section.durationMs / 1000}`,
+          "-i", `color=c=black:s=1080x1350:r=30:d=${section.durationMs / 1000}`,
           "-c:v", "libx264",
+          "-pix_fmt", "yuv420p",
+          "-r", "30",
           segName,
         ]);
       } else {
@@ -42,6 +44,9 @@ self.onmessage = async (e: MessageEvent) => {
           ...(matched.trimDurationMs ? ["-t", String(matched.trimDurationMs / 1000)] : []),
           "-vf", `setpts=${(1 / matched.speedFactor).toFixed(4)}*PTS`,
           "-an",
+          "-c:v", "libx264",
+          "-pix_fmt", "yuv420p",
+          "-r", "30",
           segName,
         ]);
         await ffmpeg.deleteFile(`input-${i}-${j}.mp4`);
@@ -58,7 +63,11 @@ self.onmessage = async (e: MessageEvent) => {
   await ffmpeg.exec([
     "-f", "concat", "-safe", "0", "-i", "concat.txt",
     "-i", "audio.mp3",
-    "-c:v", "copy", "-c:a", "aac", "-shortest",
+    "-c:v", "libx264",
+    "-pix_fmt", "yuv420p",
+    "-r", "30",
+    "-c:a", "aac",
+    "-shortest",
     "output.mp4",
   ]);
 
