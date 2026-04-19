@@ -54,6 +54,7 @@ export function TimelinePreview({ timeline, productId, onTimelineChange }: Timel
       createdAt: new Date(c.createdAt),
     }));
     const map = buildClipsByBaseName(clips);
+    // durationMs is already frame-aligned from the original parse; matchSections only consumes tag + durationMs
     const fakeSection: ParsedSection = {
       lineNumber: sectionIndex + 1,
       startTime: 0,
