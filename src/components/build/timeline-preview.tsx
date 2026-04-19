@@ -6,16 +6,12 @@ import { getThumbnail } from "@/lib/clip-storage";
 import { buildClipsByBaseName, matchSections, type MatchedSection, type ClipMetadata } from "@/lib/auto-match";
 import { deriveBaseName } from "@/lib/broll";
 import type { ParsedSection } from "@/lib/script-parser";
+import { formatMs } from "@/lib/format-time";
 
 interface TimelinePreviewProps {
   timeline: MatchedSection[];
   productId: string;
   onTimelineChange: (t: MatchedSection[]) => void;
-}
-
-function formatMs(ms: number) {
-  const s = Math.round(ms / 1000);
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
 function MissingPanel({ timeline }: { timeline: MatchedSection[] }) {

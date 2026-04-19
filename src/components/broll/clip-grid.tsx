@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getThumbnail } from "@/lib/clip-storage";
 import { deriveBaseName, isValidBrollName } from "@/lib/broll";
+import { formatMs } from "@/lib/format-time";
 import type { Folder } from "./folder-sidebar";
 import { ClipUpload } from "./clip-upload";
 
@@ -32,11 +33,6 @@ function ThumbnailImage({ clipId }: { clipId: string }) {
   return src
     ? <img src={src} alt="" className="w-full h-full object-cover" />
     : <div className="w-full h-full bg-muted flex items-center justify-center text-xs text-muted-foreground">No preview</div>;
-}
-
-function formatMs(ms: number) {
-  const s = Math.round(ms / 1000);
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
 export function ClipGrid({ clips, productId, folders, activeFolderId, onClipsChanged }: ClipGridProps) {
