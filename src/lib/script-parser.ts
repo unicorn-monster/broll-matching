@@ -21,8 +21,10 @@ export interface ParseResult {
 //   HH:MM:SS     --> HH:MM:SS     || tag || text   (ms = 000)
 //   MM:SS        --> MM:SS        || tag || text   (ms = 000)
 const TIMESTAMP = String.raw`(?:(\d{1,2}):)?(\d{1,2}):(\d{2})(?:,(\d{1,3}))?`;
+// Separator accepts SRT standard "-->", plain hyphen, en-dash (\u2013), em-dash (\u2014)
+const SEPARATOR = String.raw`(?:-->|[-\u2013\u2014])`;
 const LINE_PATTERN = new RegExp(
-  `^${TIMESTAMP}\\s*-->\\s*${TIMESTAMP}\\s*\\|\\|\\s*(.+?)\\s*\\|\\|\\s*(.*)$`,
+  `^${TIMESTAMP}\\s*${SEPARATOR}\\s*${TIMESTAMP}\\s*\\|\\|\\s*(.+?)\\s*\\|\\|\\s*(.*)$`,
 );
 
 function parseTimestampToMs(
@@ -53,7 +55,7 @@ export function parseScript(text: string, availableBaseNames: Set<string>): Pars
     if (!match) {
       errors.push({
         line: lineNumber,
-        message: `Invalid format at line ${lineNumber} (expected "HH:MM:SS,mmm --> HH:MM:SS,mmm || tag || text")`,
+        message: `Invalid format at line ${lineNumber} (expected "HH:MM:SS,mmm --> HH:MM:SS,mmm || tag || text"; separators -, \u2013, \u2014 also accepted)`,
       });
       return;
     }

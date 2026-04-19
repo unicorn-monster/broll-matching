@@ -72,6 +72,25 @@ describe("parseScript — SRT-style", () => {
     expect(result.sections).toHaveLength(0);
   });
 
+  it("accepts hyphen separator (CapCut variant)", () => {
+    const result = parseScript("00:00:00,000 - 00:00:02,833 ||Hook|| text", BASE_NAMES);
+    expect(result.errors).toHaveLength(0);
+    expect(result.sections).toHaveLength(1);
+    expect(result.sections[0].tag).toBe("Hook");
+  });
+
+  it("accepts en-dash separator", () => {
+    const result = parseScript("00:00:00,000 \u2013 00:00:02,833 ||Hook|| text", BASE_NAMES);
+    expect(result.errors).toHaveLength(0);
+    expect(result.sections).toHaveLength(1);
+  });
+
+  it("accepts em-dash separator", () => {
+    const result = parseScript("00:00:00,000 \u2014 00:00:02,833 ||Hook|| text", BASE_NAMES);
+    expect(result.errors).toHaveLength(0);
+    expect(result.sections).toHaveLength(1);
+  });
+
   it("handles multi-line SRT-style script", () => {
     const input = [
       "00:00:00,000 --> 00:00:04,000 || Hook || Line one",
