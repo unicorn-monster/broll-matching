@@ -52,7 +52,12 @@ export async function POST(
       .values({ productId: id, folderId, brollName, filename, durationMs, width, height, indexeddbKey, fileSizeBytes })
       .returning();
     return NextResponse.json(clip, { status: 201 });
-  } catch {
-    return NextResponse.json({ error: "B-roll name already exists in this product" }, { status: 409 });
+  } catch (err) {
+    console.error("[clips POST] insert failed:", err);
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("clips_product_broll_name_unique") || msg.includes("duplicate key")) {
+      return NextResponse.json({ error: "B-roll name already exists in this product" }, { status: 409 });
+    }
+    return NextResponse.json({ error: `Insert failed: ${msg}` }, { status: 500 });
   }
 }
