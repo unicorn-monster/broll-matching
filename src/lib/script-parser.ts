@@ -59,12 +59,25 @@ export function parseScript(text: string, availableBaseNames: Set<string>): Pars
     }
 
     const [, sh, sm, ss, sms, eh, em, es, ems, tag, scriptText] = match;
+    // Regex guarantees these groups are present when the overall match succeeds.
+    if (!sm || !ss || !em || !es || !tag || scriptText === undefined) {
+      errors.push({ line: lineNumber, message: `Internal regex error at line ${lineNumber}` });
+      return;
+    }
     const rawStartMs = parseTimestampToMs(sh, sm, ss, sms);
     const rawEndMs = parseTimestampToMs(eh, em, es, ems);
 
     const startMs = snapMsToFrame(rawStartMs);
     const endMs = snapMsToFrame(rawEndMs);
     const durationMs = endMs - startMs;
+
+    if (durationMs < 0) {
+      errors.push({
+        line: lineNumber,
+        message: `Line ${lineNumber}: end time is before start time for tag "${tag}"`,
+      });
+      return;
+    }
 
     if (durationMs === 0) {
       warnings.push({

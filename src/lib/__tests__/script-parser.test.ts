@@ -30,14 +30,13 @@ describe("parseScript — SRT-style", () => {
   });
 
   it("snaps start/end to frame boundaries", () => {
-    // 1000ms start, 1050ms end — 50ms is between frame 1 (33.33) and frame 2 (66.67)
-    // 1050ms → nearest frame = 32 (1066.67ms) — no wait, 1050 * 30 / 1000 = 31.5 → rounds to 32
+    // 1050ms: 1050 * 30 / 1000 = 31.5 → rounds to frame 32 (1066.67ms)
     const result = parseScript("00:01,000 --> 00:01,050 || Hook || tiny", BASE_NAMES);
-    // start frame 30 (1000ms), end frame 32 (1066.67ms) → 2 frames = 66.67ms
-    // OR start frame 30, end frame 31 (1033.33ms) → 1 frame = 33.33ms
-    // depending on rounding — either way, result is frame-aligned integer count
     const d = result.sections[0].durationMs;
-    expect(Math.round(d * 30 / 1000)).toBeGreaterThan(0); // is integer frame count
+    const frameCount = (d * 30) / 1000;
+    // duration must land exactly on a frame boundary (integer frame count)
+    expect(Math.abs(frameCount - Math.round(frameCount))).toBeLessThan(1e-9);
+    expect(Math.round(frameCount)).toBeGreaterThan(0);
   });
 
   it("skips blank lines", () => {
@@ -64,6 +63,13 @@ describe("parseScript — SRT-style", () => {
   it("warns on zero-duration section", () => {
     const result = parseScript("00:00,000 --> 00:00,000 || Hook || text", BASE_NAMES);
     expect(result.warnings.some((w) => w.message.includes("zero"))).toBe(true);
+  });
+
+  it("errors on reversed timestamps (end before start)", () => {
+    const result = parseScript("00:00:05,000 --> 00:00:03,000 || Hook || text", BASE_NAMES);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0].message).toMatch(/end time is before start time/i);
+    expect(result.sections).toHaveLength(0);
   });
 
   it("handles multi-line SRT-style script", () => {
