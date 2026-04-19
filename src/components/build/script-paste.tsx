@@ -45,7 +45,7 @@ export function ScriptPaste({ availableBaseNames, productId, onParsed }: ScriptP
         value={text}
         onChange={(e) => { setText(e.target.value); setParsed(false); }}
         className="w-full h-48 font-mono text-sm border border-border rounded-lg p-3 bg-background resize-y focus:outline-none focus:ring-1 focus:ring-primary"
-        placeholder={"00:00 - 00:04 || hook || Script text here\n00:04 - 00:12 || fs-clipper-freakout || More script"}
+        placeholder={"00:00:01,250 --> 00:00:02,833 || hook || Script text here\n00:00:02,833 --> 00:00:12,000 || fs-clipper-freakout || More script"}
       />
 
       {errors.length > 0 && (
