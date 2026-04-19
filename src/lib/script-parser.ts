@@ -1,10 +1,12 @@
+import { snapMsToFrame } from "./frame-align";
+
 export interface ParsedSection {
   lineNumber: number;
-  startTime: number;
-  endTime: number;
+  startTime: number;   // seconds (frame-snapped, may have fractional ms)
+  endTime: number;     // seconds (frame-snapped)
   tag: string;
   scriptText: string;
-  durationMs: number;
+  durationMs: number;  // frame-snapped (endMs - startMs)
 }
 
 export interface ParseResult {
@@ -13,13 +15,27 @@ export interface ParseResult {
   warnings: { line: number; message: string }[];
 }
 
-const LINE_PATTERN =
-  /^(\d{1,2}:\d{2}(?::\d{2})?)\s*-\s*(\d{1,2}:\d{2}(?::\d{2})?)\s*\|\|\s*(.+?)\s*\|\|\s*(.*)$/;
+// Matches:
+//   HH:MM:SS,mmm --> HH:MM:SS,mmm || tag || text
+//   MM:SS,mmm    --> MM:SS,mmm    || tag || text
+//   HH:MM:SS     --> HH:MM:SS     || tag || text   (ms = 000)
+//   MM:SS        --> MM:SS        || tag || text   (ms = 000)
+const TIMESTAMP = String.raw`(?:(\d{1,2}):)?(\d{1,2}):(\d{2})(?:,(\d{1,3}))?`;
+const LINE_PATTERN = new RegExp(
+  `^${TIMESTAMP}\\s*-->\\s*${TIMESTAMP}\\s*\\|\\|\\s*(.+?)\\s*\\|\\|\\s*(.*)$`,
+);
 
-function parseTime(ts: string): number {
-  const parts = ts.split(":").map(Number);
-  if (parts.length === 2) return parts[0] * 60 + parts[1];
-  return parts[0] * 3600 + parts[1] * 60 + parts[2];
+function parseTimestampToMs(
+  h: string | undefined,
+  m: string,
+  s: string,
+  ms: string | undefined,
+): number {
+  const hours = h ? Number(h) : 0;
+  const mins = Number(m);
+  const secs = Number(s);
+  const millis = ms ? Number(ms.padEnd(3, "0").slice(0, 3)) : 0;
+  return ((hours * 3600 + mins * 60 + secs) * 1000) + millis;
 }
 
 export function parseScript(text: string, availableBaseNames: Set<string>): ParseResult {
@@ -35,17 +51,26 @@ export function parseScript(text: string, availableBaseNames: Set<string>): Pars
 
     const match = line.match(LINE_PATTERN);
     if (!match) {
-      errors.push({ line: lineNumber, message: `Invalid format at line ${lineNumber}` });
+      errors.push({
+        line: lineNumber,
+        message: `Invalid format at line ${lineNumber} (expected "HH:MM:SS,mmm --> HH:MM:SS,mmm || tag || text")`,
+      });
       return;
     }
 
-    const [, startStr, endStr, tag, scriptText] = match;
-    const startTime = parseTime(startStr);
-    const endTime = parseTime(endStr);
-    const durationMs = (endTime - startTime) * 1000;
+    const [, sh, sm, ss, sms, eh, em, es, ems, tag, scriptText] = match;
+    const rawStartMs = parseTimestampToMs(sh, sm, ss, sms);
+    const rawEndMs = parseTimestampToMs(eh, em, es, ems);
+
+    const startMs = snapMsToFrame(rawStartMs);
+    const endMs = snapMsToFrame(rawEndMs);
+    const durationMs = endMs - startMs;
 
     if (durationMs === 0) {
-      warnings.push({ line: lineNumber, message: `Line ${lineNumber}: zero-duration section for tag "${tag}"` });
+      warnings.push({
+        line: lineNumber,
+        message: `Line ${lineNumber}: zero-duration section for tag "${tag}"`,
+      });
     }
 
     if (!availableBaseNames.has(tag.toLowerCase())) {
@@ -55,7 +80,14 @@ export function parseScript(text: string, availableBaseNames: Set<string>): Pars
       });
     }
 
-    sections.push({ lineNumber, startTime, endTime, tag, scriptText: scriptText.trim(), durationMs });
+    sections.push({
+      lineNumber,
+      startTime: startMs / 1000,
+      endTime: endMs / 1000,
+      tag,
+      scriptText: scriptText.trim(),
+      durationMs,
+    });
   });
 
   return { sections, errors, warnings };
