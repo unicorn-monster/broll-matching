@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildClipsByBaseName, matchSections } from "../auto-match";
+import { buildClipsByBaseName, computeChainSpeed, matchSections } from "../auto-match";
 import type { ParsedSection } from "../script-parser";
 
 const makeClip = (brollName: string, durationMs: number) => ({
@@ -117,5 +117,27 @@ describe("matchSections", () => {
     const [matched] = matchSections([makeSection("Hook", 2833)], map);
     expect(matched.clips.length).toBeGreaterThanOrEqual(2);
     for (const c of matched.clips) expect(c.speedFactor).toBeGreaterThanOrEqual(1.0);
+  });
+});
+
+describe("computeChainSpeed", () => {
+  it("returns 1.0 for an exact-match single clip", () => {
+    expect(computeChainSpeed([5000], 5000)).toBe(1);
+  });
+
+  it("returns clip/section ratio for single clip longer than section", () => {
+    expect(computeChainSpeed([8000], 4000)).toBe(2);
+  });
+
+  it("returns slow-down ratio (<1) for single clip shorter than section", () => {
+    expect(computeChainSpeed([3000], 5000)).toBeCloseTo(0.6, 2);
+  });
+
+  it("returns total/section ratio for multi-clip chain", () => {
+    expect(computeChainSpeed([2500, 3400], 5000)).toBeCloseTo(1.18, 2);
+  });
+
+  it("returns 0 for empty chain", () => {
+    expect(computeChainSpeed([], 5000)).toBe(0);
   });
 });

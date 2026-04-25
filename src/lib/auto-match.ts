@@ -7,6 +7,16 @@ export const HIGH_SPEED_THRESHOLD = 2.0;
 /** Minimum allowed speedFactor when user manually builds a chain. Below this, save is rejected. */
 export const MIN_SPEED_FACTOR = 0.8;
 
+/**
+ * Pure helper: returns the uniform speedFactor a chain of clips will play at to fit `sectionMs`.
+ * speed = sum(clip durations) / sectionMs. Returns 0 for an empty chain so callers can detect it.
+ */
+export function computeChainSpeed(chainDurations: number[], sectionMs: number): number {
+  if (chainDurations.length === 0) return 0;
+  const total = chainDurations.reduce((sum, d) => sum + d, 0);
+  return total / sectionMs;
+}
+
 export interface ClipMetadata {
   id: string;
   brollName: string;
