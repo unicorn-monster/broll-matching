@@ -52,13 +52,14 @@ function VariantTile({
 
   useEffect(() => {
     let objectUrl: string | null = null;
+    let active = true;
     getThumbnail(clip.id).then((buf) => {
-      if (buf) {
-        objectUrl = URL.createObjectURL(new Blob([buf], { type: "image/jpeg" }));
-        setSrc(objectUrl);
-      }
+      if (!active || !buf) return;
+      objectUrl = URL.createObjectURL(new Blob([buf], { type: "image/jpeg" }));
+      setSrc(objectUrl);
     });
     return () => {
+      active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [clip.id]);

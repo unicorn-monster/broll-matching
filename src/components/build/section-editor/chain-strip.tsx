@@ -68,37 +68,39 @@ function SlotTile({
 
   useEffect(() => {
     let objectUrl: string | null = null;
+    let active = true;
     getThumbnail(clip.id).then((buf) => {
-      if (buf) {
-        objectUrl = URL.createObjectURL(new Blob([buf], { type: "image/jpeg" }));
-        setSrc(objectUrl);
-      }
+      if (!active || !buf) return;
+      objectUrl = URL.createObjectURL(new Blob([buf], { type: "image/jpeg" }));
+      setSrc(objectUrl);
     });
     return () => {
+      active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [clip.id]);
 
   return (
-    <div
-      className={cn(
-        "relative shrink-0 w-20 h-28 rounded-md border overflow-hidden cursor-pointer transition",
-        active ? "border-primary ring-2 ring-primary/40" : "border-border hover:border-muted-foreground",
-      )}
-      onClick={onClick}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onClick(); }}
-    >
-      <div className="absolute top-0 left-0 right-0 bg-black/60 text-white text-[10px] px-1 py-0.5 z-10">
-        slot {slotIndex + 1}
-      </div>
-      <div className="w-full h-full bg-muted">
-        {src && <img src={src} alt={clip.brollName} className="w-full h-full object-cover" />}
-      </div>
-      <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] px-1 py-0.5 truncate">
-        {formatMs(clip.durationMs)}
-      </div>
+    <div className="relative shrink-0 w-20 h-28">
+      <button
+        type="button"
+        onClick={onClick}
+        className={cn(
+          "w-full h-full rounded-md border overflow-hidden transition",
+          active ? "border-primary ring-2 ring-primary/40" : "border-border hover:border-muted-foreground",
+        )}
+        aria-label={`Slot ${slotIndex + 1}: ${clip.brollName}`}
+      >
+        <div className="absolute top-0 left-0 right-0 bg-black/60 text-white text-[10px] px-1 py-0.5 z-10">
+          slot {slotIndex + 1}
+        </div>
+        <div className="w-full h-full bg-muted">
+          {src && <img src={src} alt={clip.brollName} className="w-full h-full object-cover" />}
+        </div>
+        <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] px-1 py-0.5 truncate">
+          {formatMs(clip.durationMs)}
+        </div>
+      </button>
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); onRemove(); }}
