@@ -1,6 +1,12 @@
 import { deriveBaseName } from "./broll";
 import type { ParsedSection } from "./script-parser";
 
+/** Sections with any clip whose speedFactor exceeds this get a visual warning. */
+export const HIGH_SPEED_THRESHOLD = 2.0;
+
+/** Minimum allowed speedFactor when user manually builds a chain. Below this, save is rejected. */
+export const MIN_SPEED_FACTOR = 0.8;
+
 export interface ClipMetadata {
   id: string;
   brollName: string;
@@ -30,6 +36,7 @@ export interface MatchedSection {
   durationMs: number;
   clips: MatchedClip[];
   warnings: string[];
+  userLocked?: boolean;
 }
 
 export function buildClipsByBaseName(clips: ClipMetadata[]): Map<string, ClipMetadata[]> {
