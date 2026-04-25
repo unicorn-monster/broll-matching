@@ -58,28 +58,32 @@ export function TimelinePreview({ timeline, productId, onTimelineChange }: Timel
 
   async function performReroll(sectionIndex: number) {
     const section = timeline[sectionIndex];
-    const clipsRes = await fetch(`/api/products/${productId}/clips`);
-    const rawClips = await clipsRes.json();
-    const clips: ClipMetadata[] = rawClips.map((c: any) => ({
-      ...c,
-      baseName: deriveBaseName(c.brollName),
-      createdAt: new Date(c.createdAt),
-    }));
-    const map = buildClipsByBaseName(clips);
-    const fakeSection: ParsedSection = {
-      lineNumber: sectionIndex + 1,
-      startTime: 0,
-      endTime: section.durationMs / 1000,
-      tag: section.tag,
-      scriptText: "",
-      durationMs: section.durationMs,
-    };
-    const [rerolled] = matchSections([fakeSection], map);
-    onTimelineChange(timeline.map((s, i) => (i === sectionIndex ? rerolled : s)));
+    try {
+      const clipsRes = await fetch(`/api/products/${productId}/clips`);
+      const rawClips = await clipsRes.json();
+      const clips: ClipMetadata[] = rawClips.map((c: any) => ({
+        ...c,
+        baseName: deriveBaseName(c.brollName),
+        createdAt: new Date(c.createdAt),
+      }));
+      const map = buildClipsByBaseName(clips);
+      const fakeSection: ParsedSection = {
+        lineNumber: sectionIndex + 1,
+        startTime: 0,
+        endTime: section.durationMs / 1000,
+        tag: section.tag,
+        scriptText: "",
+        durationMs: section.durationMs,
+      };
+      const [rerolled] = matchSections([fakeSection], map);
+      onTimelineChange(timeline.map((s, i) => (i === sectionIndex ? rerolled : s)));
+    } catch (err) {
+      console.error("Reroll failed:", err);
+    }
   }
 
   function reroll(sectionIndex: number) {
-    if (timeline[sectionIndex].userLocked) {
+    if (timeline[sectionIndex]?.userLocked) {
       setConfirmRerollIdx(sectionIndex);
       return;
     }
@@ -183,10 +187,14 @@ function ClipThumb({ clipId }: { clipId: string }) {
   const [src, setSrc] = useState<string | null>(null);
 
   useEffect(() => {
+    let objectUrl: string | null = null;
     getThumbnail(clipId).then((buf) => {
-      if (buf) setSrc(URL.createObjectURL(new Blob([buf], { type: "image/jpeg" })));
+      if (buf) {
+        objectUrl = URL.createObjectURL(new Blob([buf], { type: "image/jpeg" }));
+        setSrc(objectUrl);
+      }
     });
-    return () => { if (src) URL.revokeObjectURL(src); };
+    return () => { if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [clipId]);
 
   return src ? <img src={src} alt="" className="w-full h-full object-cover" /> : null;
