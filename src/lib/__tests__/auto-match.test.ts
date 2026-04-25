@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { buildClipsByBaseName, computeChainSpeed, matchSections, validateChain } from "../auto-match";
+import {
+  buildClipsByBaseName,
+  buildManualChain,
+  computeChainSpeed,
+  matchSections,
+  validateChain,
+} from "../auto-match";
+import type { ClipMetadata } from "../auto-match";
 import type { ParsedSection } from "../script-parser";
 
 const makeClip = (brollName: string, durationMs: number) => ({
@@ -166,5 +173,40 @@ describe("validateChain", () => {
     const result = validateChain([], 5000);
     expect(result).not.toBeNull();
     expect(result!.code).toBe("EMPTY");
+  });
+});
+
+describe("buildManualChain", () => {
+  const clipA = { id: "a", indexeddbKey: "a-key", durationMs: 2500 } as ClipMetadata;
+  const clipB = { id: "b", indexeddbKey: "b-key", durationMs: 3400 } as ClipMetadata;
+
+  it("produces uniform speedFactor across all picks", () => {
+    const chain = buildManualChain([clipA, clipB], 5000);
+    expect(chain).toHaveLength(2);
+    const expected = (2500 + 3400) / 5000;
+    expect(chain[0].speedFactor).toBeCloseTo(expected, 4);
+    expect(chain[1].speedFactor).toBeCloseTo(expected, 4);
+  });
+
+  it("preserves clipId and indexeddbKey for each pick in order", () => {
+    const chain = buildManualChain([clipA, clipB], 5000);
+    expect(chain[0].clipId).toBe("a");
+    expect(chain[0].indexeddbKey).toBe("a-key");
+    expect(chain[1].clipId).toBe("b");
+    expect(chain[1].indexeddbKey).toBe("b-key");
+  });
+
+  it("sets isPlaceholder false for all picks", () => {
+    const chain = buildManualChain([clipA], 2500);
+    expect(chain[0].isPlaceholder).toBe(false);
+  });
+
+  it("returns single placeholder when picks is empty", () => {
+    const chain = buildManualChain([], 5000);
+    expect(chain).toHaveLength(1);
+    expect(chain[0].isPlaceholder).toBe(true);
+    expect(chain[0].clipId).toBe("placeholder");
+    expect(chain[0].indexeddbKey).toBe("");
+    expect(chain[0].speedFactor).toBe(1);
   });
 });

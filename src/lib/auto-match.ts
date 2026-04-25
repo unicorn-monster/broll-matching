@@ -76,6 +76,29 @@ export interface MatchedSection {
   userLocked?: boolean;
 }
 
+/**
+ * Builds a MatchedClip[] from a user-curated ordered list of clips for one section.
+ * All picks share a uniform speedFactor so the chain plays end-to-end in `sectionMs`.
+ * Returns a single placeholder (speedFactor 1, isPlaceholder true) when no picks given —
+ * matches the placeholder shape produced by `matchSections` for tagless sections so
+ * downstream renderers handle both paths identically.
+ */
+export function buildManualChain(picks: ClipMetadata[], sectionMs: number): MatchedClip[] {
+  if (picks.length === 0) {
+    return [{ clipId: "placeholder", indexeddbKey: "", speedFactor: 1, isPlaceholder: true }];
+  }
+  const speedFactor = computeChainSpeed(
+    picks.map((p) => p.durationMs),
+    sectionMs,
+  );
+  return picks.map((p) => ({
+    clipId: p.id,
+    indexeddbKey: p.indexeddbKey,
+    speedFactor,
+    isPlaceholder: false,
+  }));
+}
+
 export function buildClipsByBaseName(clips: ClipMetadata[]): Map<string, ClipMetadata[]> {
   const map = new Map<string, ClipMetadata[]>();
   for (const clip of clips) {
