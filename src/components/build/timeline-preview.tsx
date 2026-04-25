@@ -62,13 +62,15 @@ export function TimelinePreview({ timeline, productId, onTimelineChange }: Timel
     const real = clips.filter((c) => !c.isPlaceholder);
     if (real.length === 0) return [];
     const res = await fetch(`/api/products/${productId}/clips`);
-    const raw = await res.json();
+    if (!res.ok) throw new Error(`Failed to load clips (${res.status})`);
+    const raw: Array<Record<string, unknown>> = await res.json();
     const byId = new Map<string, ClipMetadata>();
     for (const c of raw) {
-      byId.set(c.id, {
-        ...c,
-        baseName: deriveBaseName(c.brollName),
-        createdAt: new Date(c.createdAt),
+      const id = c.id as string;
+      byId.set(id, {
+        ...(c as Omit<ClipMetadata, "baseName" | "createdAt">),
+        baseName: deriveBaseName(c.brollName as string),
+        createdAt: new Date(c.createdAt as string),
       });
     }
     return real.flatMap((c) => {
