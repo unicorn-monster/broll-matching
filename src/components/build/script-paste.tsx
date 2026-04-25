@@ -7,13 +7,14 @@ import { buildClipsByBaseName, matchSections, type MatchedSection, type ClipMeta
 import { deriveBaseName } from "@/lib/broll";
 
 interface ScriptPasteProps {
+  text: string;
+  onTextChange: (t: string) => void;
   availableBaseNames: Set<string>;
   productId: string;
   onParsed: (sections: ParsedSection[], timeline: MatchedSection[]) => void;
 }
 
-export function ScriptPaste({ availableBaseNames, productId, onParsed }: ScriptPasteProps) {
-  const [text, setText] = useState("");
+export function ScriptPaste({ text, onTextChange, availableBaseNames, productId, onParsed }: ScriptPasteProps) {
   const [errors, setErrors] = useState<{ line: number; message: string }[]>([]);
   const [warnings, setWarnings] = useState<{ line: number; message: string }[]>([]);
   const [parsed, setParsed] = useState(false);
@@ -43,7 +44,7 @@ export function ScriptPaste({ availableBaseNames, productId, onParsed }: ScriptP
     <div className="space-y-3">
       <textarea
         value={text}
-        onChange={(e) => { setText(e.target.value); setParsed(false); }}
+        onChange={(e) => { onTextChange(e.target.value); setParsed(false); }}
         className="w-full h-48 font-mono text-sm border border-border rounded-lg p-3 bg-background resize-y focus:outline-none focus:ring-1 focus:ring-primary"
         placeholder={"00:00:01,250 --> 00:00:02,833 || hook || Script text here\n00:00:02,833 --> 00:00:12,000 || fs-clipper-freakout || More script"}
       />

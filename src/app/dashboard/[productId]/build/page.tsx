@@ -1,21 +1,19 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { useParams } from "next/navigation";
 import { StepWrapper } from "@/components/build/step-wrapper";
 import { AudioUpload } from "@/components/build/audio-upload";
 import { ScriptPaste } from "@/components/build/script-paste";
 import { TimelinePreview } from "@/components/build/timeline-preview";
 import { RenderTrigger } from "@/components/build/render-trigger";
+import { useBuildState } from "@/components/build/build-state-context";
 import { deriveBaseName } from "@/lib/broll";
-import type { ParsedSection } from "@/lib/script-parser";
-import type { MatchedSection } from "@/lib/auto-match";
+import { useState } from "react";
 
 export default function BuildVideoPage() {
   const { productId } = useParams<{ productId: string }>();
-  const [audioFile, setAudioFile] = useState<File | null>(null);
-  const [sections, setSections] = useState<ParsedSection[] | null>(null);
-  const [timeline, setTimeline] = useState<MatchedSection[] | null>(null);
+  const { audioFile, audioDuration, setAudio, scriptText, setScriptText, sections, timeline, onParsed, setTimeline } = useBuildState();
   const [availableBaseNames, setAvailableBaseNames] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -32,14 +30,16 @@ export default function BuildVideoPage() {
       <h1 className="text-2xl font-bold">Build Video</h1>
 
       <StepWrapper step={1} title="Upload Audio" active>
-        <AudioUpload onAudioReady={setAudioFile} />
+        <AudioUpload file={audioFile} duration={audioDuration} onFile={setAudio} />
       </StepWrapper>
 
       <StepWrapper step={2} title="Paste Script" active>
         <ScriptPaste
+          text={scriptText}
+          onTextChange={setScriptText}
           availableBaseNames={availableBaseNames}
           productId={productId}
-          onParsed={(s: ParsedSection[], t: MatchedSection[]) => { setSections(s); setTimeline(t); }}
+          onParsed={onParsed}
         />
       </StepWrapper>
 
