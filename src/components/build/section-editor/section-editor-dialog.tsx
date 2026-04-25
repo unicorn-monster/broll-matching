@@ -49,16 +49,20 @@ export function SectionEditorDialog({
   const [activeSlot, setActiveSlot] = useState<number | null>(null);
   const [selectedClip, setSelectedClip] = useState<ClipMetadata | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Load variants + initial picks each time dialog opens.
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     setLoading(true);
+    setLoadError(null);
     (async () => {
       try {
+        const clipsResponse = await fetch(`/api/products/${productId}/clips`);
+        if (!clipsResponse.ok) throw new Error(`Failed to load clips (${clipsResponse.status})`);
         const [variantsRes, initialPicks] = await Promise.all([
-          fetch(`/api/products/${productId}/clips`).then((r) => r.json()),
+          clipsResponse.json(),
           resolveSectionClips(section.clips),
         ]);
         if (cancelled) return;
@@ -75,6 +79,8 @@ export function SectionEditorDialog({
         setPicks(initialPicks);
         setActiveSlot(null);
         setSelectedClip(null);
+      } catch (err) {
+        if (!cancelled) setLoadError(err instanceof Error ? err.message : "Failed to load clips.");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -84,12 +90,16 @@ export function SectionEditorDialog({
 
   const inChainIds = useMemo(() => new Set(picks.map((p) => p.id)), [picks]);
 
-  const chainDurations = picks.map((p) => p.durationMs);
-  const speed = computeChainSpeed(chainDurations, section.durationMs);
-  const validation = validateChain(chainDurations, section.durationMs);
-  const isHighSpeed = speed > HIGH_SPEED_THRESHOLD;
-
-  const totalMs = chainDurations.reduce((s, d) => s + d, 0);
+  const { speed, validation, isHighSpeed, totalMs } = useMemo(() => {
+    const durations = picks.map((p) => p.durationMs);
+    const spd = computeChainSpeed(durations, section.durationMs);
+    return {
+      speed: spd,
+      validation: validateChain(durations, section.durationMs),
+      isHighSpeed: spd > HIGH_SPEED_THRESHOLD,
+      totalMs: durations.reduce((s, d) => s + d, 0),
+    };
+  }, [picks, section.durationMs]);
 
   function handleSelectVariant(clip: ClipMetadata) {
     setSelectedClip(clip);
@@ -143,6 +153,8 @@ export function SectionEditorDialog({
 
         {loading ? (
           <div className="text-sm text-muted-foreground p-8 text-center">Loading…</div>
+        ) : loadError ? (
+          <div className="text-sm text-red-500 p-8 text-center">{loadError}</div>
         ) : (
           <>
             <ChainStrip
@@ -188,7 +200,7 @@ export function SectionEditorDialog({
             <span className={cn("font-mono", isHighSpeed && "text-yellow-600", validation?.code === "TOO_SLOW" && "text-red-500")}>
               {speed.toFixed(2)}× speed
             </span>
-            {validation && (
+            {validation?.code === "TOO_SLOW" && (
               <span className="ml-2 text-red-500">{validation.message}</span>
             )}
             {!validation && isHighSpeed && (
