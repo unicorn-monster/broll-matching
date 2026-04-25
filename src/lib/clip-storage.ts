@@ -1,11 +1,19 @@
 import { openDB, type IDBPDatabase } from "idb";
 
 const DB_NAME = "broll-auto-assembly";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 async function getDB(): Promise<IDBPDatabase> {
   return openDB(DB_NAME, DB_VERSION, {
-    upgrade(db) {
+    upgrade(db, oldVersion) {
+      if (oldVersion < 2) {
+        if (db.objectStoreNames.contains("clips")) {
+          db.deleteObjectStore("clips");
+        }
+        if (db.objectStoreNames.contains("thumbnails")) {
+          db.deleteObjectStore("thumbnails");
+        }
+      }
       if (!db.objectStoreNames.contains("clips")) {
         db.createObjectStore("clips");
       }

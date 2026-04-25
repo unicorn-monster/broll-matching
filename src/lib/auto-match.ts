@@ -48,18 +48,10 @@ function pickRandom<T>(arr: T[], avoid?: T): T {
   return choices.length ? choices[Math.floor(Math.random() * choices.length)] : arr[0];
 }
 
-function scenarioA(clip: ClipMetadata, sectionMs: number): MatchedClip {
+function singleClipMatch(clip: ClipMetadata, sectionMs: number): MatchedClip {
+  // Precondition: clip.durationMs >= sectionMs, so speedFactor >= 1.0 (never slows).
   const speedFactor = clip.durationMs / sectionMs;
-  if (speedFactor <= 2.0) {
-    return { clipId: clip.id, indexeddbKey: clip.indexeddbKey, speedFactor, isPlaceholder: false };
-  }
-  return {
-    clipId: clip.id,
-    indexeddbKey: clip.indexeddbKey,
-    speedFactor: 2.0,
-    trimDurationMs: sectionMs * 2,
-    isPlaceholder: false,
-  };
+  return { clipId: clip.id, indexeddbKey: clip.indexeddbKey, speedFactor, isPlaceholder: false };
 }
 
 export function matchSections(
@@ -87,36 +79,44 @@ export function matchSections(
       };
     }
 
-    // Scenario A: section fits in one clip
-    if (section.durationMs <= candidates[0].durationMs) {
-      const clip = pickRandom(candidates);
+    // Case 1: at least one clip is long enough — single clip, speed up or keep 1x (never slow).
+    const longEnough = candidates.filter((c) => c.durationMs >= section.durationMs);
+    if (longEnough.length > 0) {
+      const clip = pickRandom(longEnough);
       return {
         sectionIndex,
         tag: section.tag,
         durationMs: section.durationMs,
-        clips: [scenarioA(clip, section.durationMs)],
+        clips: [singleClipMatch(clip, section.durationMs)],
         warnings,
       };
     }
 
-    // Scenario B: chain clips
-    const matched: MatchedClip[] = [];
-    let remaining = section.durationMs;
+    // Case 2: no single clip fits — chain clips until total >= section, speed up all uniformly.
+    // Every candidate here has duration < section.durationMs, so the overshoot < section.durationMs,
+    // making the resulting speedFactor strictly < 2.0 (no cap/trim needed).
+    const chain: ClipMetadata[] = [];
+    let totalMs = 0;
     let lastClip: ClipMetadata | undefined;
-
-    while (remaining > 0) {
+    while (totalMs < section.durationMs) {
       const clip = pickRandom(candidates, lastClip);
+      chain.push(clip);
       lastClip = clip;
-
-      if (clip.durationMs <= remaining) {
-        matched.push({ clipId: clip.id, indexeddbKey: clip.indexeddbKey, speedFactor: 1.0, isPlaceholder: false });
-        remaining -= clip.durationMs;
-      } else {
-        matched.push(scenarioA(clip, remaining));
-        remaining = 0;
-      }
+      totalMs += clip.durationMs;
     }
 
-    return { sectionIndex, tag: section.tag, durationMs: section.durationMs, clips: matched, warnings };
+    const speedFactor = totalMs / section.durationMs;
+    return {
+      sectionIndex,
+      tag: section.tag,
+      durationMs: section.durationMs,
+      clips: chain.map((c) => ({
+        clipId: c.id,
+        indexeddbKey: c.indexeddbKey,
+        speedFactor,
+        isPlaceholder: false,
+      })),
+      warnings,
+    };
   });
 }

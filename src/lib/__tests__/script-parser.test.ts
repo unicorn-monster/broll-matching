@@ -91,6 +91,26 @@ describe("parseScript — SRT-style", () => {
     expect(result.sections).toHaveLength(1);
   });
 
+  it("accepts period as decimal separator (HH:MM:SS.mmm)", () => {
+    const result = parseScript("00:00:00.000 - 00:00:02.833 || Hook || text", BASE_NAMES);
+    expect(result.errors).toHaveLength(0);
+    expect(result.sections).toHaveLength(1);
+    expect(result.sections[0].tag).toBe("Hook");
+  });
+
+  it("accepts period decimal separator with --> and produces same duration as comma form", () => {
+    const withPeriod = parseScript("00:00:01.250 --> 00:00:02.833 || Hook || text", BASE_NAMES);
+    const withComma = parseScript("00:00:01,250 --> 00:00:02,833 || Hook || text", BASE_NAMES);
+    expect(withPeriod.errors).toHaveLength(0);
+    expect(withPeriod.sections[0].durationMs).toBe(withComma.sections[0].durationMs);
+  });
+
+  it("accepts mixed comma and period decimal separators on same line", () => {
+    const result = parseScript("00:00:01,250 --> 00:00:02.833 || Hook || text", BASE_NAMES);
+    expect(result.errors).toHaveLength(0);
+    expect(result.sections).toHaveLength(1);
+  });
+
   it("handles multi-line SRT-style script", () => {
     const input = [
       "00:00:00,000 --> 00:00:04,000 || Hook || Line one",

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, Pencil, Trash2, FolderOpen, Library } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Plus, Pencil, Trash2, FolderOpen, Library, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -30,6 +30,13 @@ export function FolderSidebar({
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  const [query, setQuery] = useState("");
+
+  const filteredFolders = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return folders;
+    return folders.filter((f) => f.name.toLowerCase().includes(q));
+  }, [folders, query]);
 
   async function handleCreate() {
     if (!newName.trim()) return;
@@ -59,9 +66,26 @@ export function FolderSidebar({
         <span className="text-xs text-muted-foreground">{totalClipCount}</span>
       </button>
 
-      <div className="p-3 text-xs uppercase tracking-wide text-muted-foreground mt-2">Folders</div>
+      <div className="px-3 pt-2 pb-1 flex items-center justify-between text-xs uppercase tracking-wide text-muted-foreground mt-2">
+        <span>Folders</span>
+      </div>
+      <div className="px-2 pb-1">
+        <div className="relative">
+          <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search folders"
+            className="h-7 text-sm pl-7"
+          />
+        </div>
+      </div>
 
-      {folders.map((f) => (
+      {filteredFolders.length === 0 && query ? (
+        <div className="px-3 py-2 text-xs text-muted-foreground">No folders match &ldquo;{query}&rdquo;</div>
+      ) : null}
+
+      {filteredFolders.map((f) => (
         <div key={f.id} className="group relative">
           {editingId === f.id ? (
             <div className="px-2 py-1 flex gap-1">

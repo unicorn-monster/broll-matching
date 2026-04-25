@@ -75,20 +75,20 @@ export function ClipGrid({ clips, productId, activeFolderId, onClipsChanged, fil
     <div className="space-y-6">
       {/* Top bar: search + upload */}
       <div className="flex items-center justify-between gap-3">
-        <div className="relative flex-1 max-w-xs">
-          <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+        <div className="relative flex-1 max-w-sm">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
           <Input
             value={fileQuery}
             onChange={(e) => onFileQueryChange(e.target.value)}
             placeholder="Search clips by name..."
-            className="h-7 text-sm pl-7 pr-7"
+            className="h-9 text-sm pl-9 pr-8"
           />
           {fileQuery && (
             <button
               onClick={() => onFileQueryChange("")}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
             >
-              <X className="w-3 h-3" />
+              <X className="w-3.5 h-3.5" />
             </button>
           )}
         </div>

@@ -97,6 +97,11 @@ export function ClipUpload({ productId, folderId, onDone }: ClipUploadProps) {
         const outputName = `output-${i}.mp4`;
         const thumbName = `thumb-${i}.jpg`;
 
+        // Clean up any stale files left by a previous failed attempt
+        for (const name of [inputName, outputName, thumbName]) {
+          try { await ffmpeg.deleteFile(name); } catch {}
+        }
+
         await ffmpeg.writeFile(inputName, await fetchFile(row.file));
         updateRow(i, { progress: 20 });
 
@@ -111,7 +116,7 @@ export function ClipUpload({ productId, folderId, onDone }: ClipUploadProps) {
           updateRow(i, { progress: 60 });
 
           await ffmpeg.exec([
-            "-i", inputName, "-ss", "00:00:01", "-frames:v", "1", "-f", "image2", thumbName,
+            "-i", inputName, "-frames:v", "1", "-f", "image2", thumbName,
           ]);
         } finally {
           ffmpeg.off("log", logHandler);
