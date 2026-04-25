@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { RefreshCw, AlertTriangle } from "lucide-react";
+import { RefreshCw, AlertTriangle, Lock } from "lucide-react";
 import { getThumbnail } from "@/lib/clip-storage";
 import { buildClipsByBaseName, matchSections, type MatchedSection, type ClipMetadata, HIGH_SPEED_THRESHOLD } from "@/lib/auto-match";
 import { cn } from "@/lib/utils";
@@ -92,6 +92,11 @@ export function TimelinePreview({ timeline, productId, onTimelineChange }: Timel
               <span className="text-xs font-semibold bg-primary/10 text-primary px-2 py-0.5 rounded shrink-0">
                 {section.tag}
               </span>
+              {section.userLocked && (
+                <span title="Manually set" className="shrink-0">
+                  <Lock className="w-3.5 h-3.5 text-blue-500" />
+                </span>
+              )}
               {isHighSpeed && (
                 <span
                   title={`Speed ${maxSpeed.toFixed(2)}× — may distort audio/frames`}
