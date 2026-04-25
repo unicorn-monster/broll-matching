@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { FolderSidebar, type Folder } from "@/components/broll/folder-sidebar";
 import { ClipGrid } from "@/components/broll/clip-grid";
+import { filterClipsByQuery } from "@/lib/clip-filter";
 
 type Clip = {
   id: string; brollName: string; filename: string;
@@ -15,6 +16,12 @@ export default function WorkspacePage() {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [clips, setClips] = useState<Clip[]>([]);
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
+  const [fileQuery, setFileQuery] = useState("");
+
+  function handleFileQueryChange(q: string) {
+    setFileQuery(q);
+    if (q.trim()) setActiveFolderId(null);
+  }
 
   async function loadFolders() {
     const res = await fetch(`/api/products/${productId}/folders`);
@@ -64,9 +71,11 @@ export default function WorkspacePage() {
     await loadAllClips();
   }
 
-  const displayedClips = activeFolderId
-    ? clips.filter((c) => c.folderId === activeFolderId)
-    : clips;
+  const displayedClips = fileQuery.trim()
+    ? filterClipsByQuery(clips, fileQuery)
+    : activeFolderId
+      ? clips.filter((c) => c.folderId === activeFolderId)
+      : clips;
 
   return (
     <div className="flex flex-1 overflow-hidden">
@@ -86,6 +95,8 @@ export default function WorkspacePage() {
             folders={folders}
             activeFolderId={activeFolderId}
             onClipsChanged={loadAllClips}
+            fileQuery={fileQuery}
+            onFileQueryChange={handleFileQueryChange}
           />
         </main>
       </div>
