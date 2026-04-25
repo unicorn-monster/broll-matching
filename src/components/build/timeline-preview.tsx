@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, AlertTriangle } from "lucide-react";
 import { getThumbnail } from "@/lib/clip-storage";
-import { buildClipsByBaseName, matchSections, type MatchedSection, type ClipMetadata } from "@/lib/auto-match";
+import { buildClipsByBaseName, matchSections, type MatchedSection, type ClipMetadata, HIGH_SPEED_THRESHOLD } from "@/lib/auto-match";
+import { cn } from "@/lib/utils";
 import { deriveBaseName } from "@/lib/broll";
 import type { ParsedSection } from "@/lib/script-parser";
 import { formatMs } from "@/lib/format-time";
@@ -72,36 +73,58 @@ export function TimelinePreview({ timeline, productId, onTimelineChange }: Timel
       <MissingPanel timeline={timeline} />
 
       <div className="space-y-2">
-        {timeline.map((section, i) => (
-          <div key={i} className="flex items-center gap-3 p-3 border border-border rounded-lg">
-            <span className="text-xs font-mono w-6 text-muted-foreground">{i + 1}</span>
-            <span className="text-xs font-semibold bg-primary/10 text-primary px-2 py-0.5 rounded shrink-0">
-              {section.tag}
-            </span>
-            <span className="text-xs text-muted-foreground shrink-0">{formatMs(section.durationMs)}</span>
+        {timeline.map((section, i) => {
+          const maxSpeed = section.clips.length === 0
+            ? 1
+            : Math.max(...section.clips.map((c) => c.speedFactor));
+          const isHighSpeed = maxSpeed > HIGH_SPEED_THRESHOLD;
 
-            <div className="flex gap-1 flex-1 overflow-x-auto">
-              {section.clips.map((clip, j) => (
-                <div key={j} className="w-10 h-12 border border-border rounded overflow-hidden shrink-0 relative bg-muted">
-                  {clip.isPlaceholder ? (
-                    <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">■</div>
-                  ) : (
-                    <ClipThumb clipId={clip.clipId} />
-                  )}
-                  {clip.speedFactor !== 1.0 && (
-                    <div className="absolute bottom-0 left-0 right-0 text-center bg-black/60 text-white text-[8px]">
-                      {clip.speedFactor.toFixed(1)}x
-                    </div>
-                  )}
-                </div>
-              ))}
+          return (
+            <div
+              key={i}
+              className={cn(
+                "flex items-center gap-3 p-3 border rounded-lg",
+                isHighSpeed && "border-yellow-500 bg-yellow-50/30 dark:bg-yellow-950/10",
+                !isHighSpeed && "border-border",
+              )}
+            >
+              <span className="text-xs font-mono w-6 text-muted-foreground">{i + 1}</span>
+              <span className="text-xs font-semibold bg-primary/10 text-primary px-2 py-0.5 rounded shrink-0">
+                {section.tag}
+              </span>
+              {isHighSpeed && (
+                <span
+                  title={`Speed ${maxSpeed.toFixed(2)}× — may distort audio/frames`}
+                  className="shrink-0"
+                >
+                  <AlertTriangle className="w-4 h-4 text-yellow-600" />
+                </span>
+              )}
+              <span className="text-xs text-muted-foreground shrink-0">{formatMs(section.durationMs)}</span>
+
+              <div className="flex gap-1 flex-1 overflow-x-auto">
+                {section.clips.map((clip, j) => (
+                  <div key={j} className="w-10 h-12 border border-border rounded overflow-hidden shrink-0 relative bg-muted">
+                    {clip.isPlaceholder ? (
+                      <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">■</div>
+                    ) : (
+                      <ClipThumb clipId={clip.clipId} />
+                    )}
+                    {clip.speedFactor !== 1.0 && (
+                      <div className="absolute bottom-0 left-0 right-0 text-center bg-black/60 text-white text-[8px]">
+                        {clip.speedFactor.toFixed(1)}x
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <button onClick={() => reroll(i)} className="shrink-0 text-muted-foreground hover:text-primary" title="Re-roll">
+                <RefreshCw className="w-4 h-4" />
+              </button>
             </div>
-
-            <button onClick={() => reroll(i)} className="shrink-0 text-muted-foreground hover:text-primary" title="Re-roll">
-              <RefreshCw className="w-4 h-4" />
-            </button>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
