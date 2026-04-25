@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Trash2, Pencil, Upload } from "lucide-react";
+import { Trash2, Pencil, Upload, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getThumbnail } from "@/lib/clip-storage";
@@ -21,6 +21,8 @@ interface ClipGridProps {
   folders: Folder[];
   activeFolderId: string | null;
   onClipsChanged: () => void;
+  fileQuery: string;
+  onFileQueryChange: (q: string) => void;
 }
 
 function ThumbnailImage({ clipId }: { clipId: string }) {
@@ -35,7 +37,7 @@ function ThumbnailImage({ clipId }: { clipId: string }) {
     : <div className="w-full h-full bg-muted flex items-center justify-center text-xs text-muted-foreground">No preview</div>;
 }
 
-export function ClipGrid({ clips, productId, folders, activeFolderId, onClipsChanged }: ClipGridProps) {
+export function ClipGrid({ clips, productId, folders, activeFolderId, onClipsChanged, fileQuery, onFileQueryChange }: ClipGridProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [showUpload, setShowUpload] = useState(false);
@@ -71,27 +73,42 @@ export function ClipGrid({ clips, productId, folders, activeFolderId, onClipsCha
     else { const d = await res.json(); alert(d.error); }
   }
 
-  if (clips.length === 0 && !showUpload) {
-    return (
-      <div className="flex flex-col items-center justify-center h-64 text-muted-foreground gap-4">
-        <p>{activeFolderId ? "No clips in this folder." : "No clips yet."}</p>
-        {activeFolderId && (
-          <Button onClick={() => setShowUpload(true)}><Upload className="w-4 h-4 mr-2" />Upload Clips</Button>
-        )}
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
-      {activeFolderId && (
-        <div className="flex justify-end">
+      {/* Top bar: search + upload */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="relative flex-1 max-w-xs">
+          <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          <Input
+            value={fileQuery}
+            onChange={(e) => onFileQueryChange(e.target.value)}
+            placeholder="Search clips by name..."
+            className="h-7 text-sm pl-7 pr-7"
+          />
+          {fileQuery && (
+            <button
+              onClick={() => onFileQueryChange("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+        {activeFolderId && (
           <Button variant="outline" onClick={() => setShowUpload((v) => !v)}>
             <Upload className="w-4 h-4 mr-2" />{showUpload ? "Hide Upload" : "Upload Clips"}
           </Button>
-        </div>
+        )}
+      </div>
+
+      {/* Match counter */}
+      {fileQuery.trim() && (
+        <p className="text-xs text-muted-foreground -mt-4">
+          {clips.length} {clips.length === 1 ? "clip" : "clips"} match
+        </p>
       )}
 
+      {/* Upload panel */}
       {showUpload && activeFolderId && (
         <ClipUpload
           productId={productId}
@@ -100,6 +117,22 @@ export function ClipGrid({ clips, productId, folders, activeFolderId, onClipsCha
         />
       )}
 
+      {/* Empty states */}
+      {clips.length === 0 && fileQuery.trim() && (
+        <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+          <p>No clips match &ldquo;{fileQuery}&rdquo;</p>
+        </div>
+      )}
+      {clips.length === 0 && !fileQuery.trim() && (
+        <div className="flex flex-col items-center justify-center h-64 text-muted-foreground gap-4">
+          <p>{activeFolderId ? "No clips in this folder." : "No clips yet."}</p>
+          {activeFolderId && (
+            <Button onClick={() => setShowUpload(true)}><Upload className="w-4 h-4 mr-2" />Upload Clips</Button>
+          )}
+        </div>
+      )}
+
+      {/* Clip groups */}
       {Object.entries(groups).sort(([a], [b]) => a.localeCompare(b)).map(([base, groupClips]) => (
         <div key={base}>
           <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-2">
@@ -110,7 +143,7 @@ export function ClipGrid({ clips, productId, folders, activeFolderId, onClipsCha
             {groupClips.map((clip) => (
               <div key={clip.id} className="group relative border border-border rounded-lg overflow-hidden bg-muted/20">
                 <div className="aspect-[4/5] relative">
-                  <ThumbnailImage clipId={clip.id} />
+                  <ThumbnailImage clipId={clip.indexeddbKey} />
                   <div className="absolute bottom-1 right-1 bg-black/60 text-white text-xs px-1 rounded">
                     {formatMs(clip.durationMs)}
                   </div>
