@@ -17,6 +17,33 @@ export function computeChainSpeed(chainDurations: number[], sectionMs: number): 
   return total / sectionMs;
 }
 
+export interface ChainValidationError {
+  code: "EMPTY" | "TOO_SLOW";
+  message: string;
+}
+
+/**
+ * Validates a manually-built chain. Returns null if acceptable, or an error describing
+ * why the chain cannot be saved (empty, or below MIN_SPEED_FACTOR slow-down floor).
+ * No upper cap — users may speed up freely (HIGH_SPEED_THRESHOLD is a UI warning, not a block).
+ */
+export function validateChain(
+  chainDurations: number[],
+  sectionMs: number,
+): ChainValidationError | null {
+  if (chainDurations.length === 0) {
+    return { code: "EMPTY", message: "Chain is empty. Add at least one clip." };
+  }
+  const speed = computeChainSpeed(chainDurations, sectionMs);
+  if (speed < MIN_SPEED_FACTOR) {
+    return {
+      code: "TOO_SLOW",
+      message: `Chain too short. Add another clip or pick a longer variant (current speed ${speed.toFixed(2)}× < ${MIN_SPEED_FACTOR}×).`,
+    };
+  }
+  return null;
+}
+
 export interface ClipMetadata {
   id: string;
   brollName: string;

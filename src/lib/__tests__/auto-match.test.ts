@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildClipsByBaseName, computeChainSpeed, matchSections } from "../auto-match";
+import { buildClipsByBaseName, computeChainSpeed, matchSections, validateChain } from "../auto-match";
 import type { ParsedSection } from "../script-parser";
 
 const makeClip = (brollName: string, durationMs: number) => ({
@@ -139,5 +139,32 @@ describe("computeChainSpeed", () => {
 
   it("returns 0 for empty chain", () => {
     expect(computeChainSpeed([], 5000)).toBe(0);
+  });
+});
+
+describe("validateChain", () => {
+  it("returns null when speed exactly at MIN_SPEED_FACTOR (0.8)", () => {
+    expect(validateChain([4000], 5000)).toBeNull();
+  });
+
+  it("returns TOO_SLOW error when speed below 0.8", () => {
+    const result = validateChain([3500], 5000); // 0.7×
+    expect(result).not.toBeNull();
+    expect(result!.code).toBe("TOO_SLOW");
+    expect(result!.message).toMatch(/too short/i);
+  });
+
+  it("returns null for chain at exactly section duration (1.0×)", () => {
+    expect(validateChain([5000], 5000)).toBeNull();
+  });
+
+  it("returns null for high speed-up (no upper cap)", () => {
+    expect(validateChain([20000], 5000)).toBeNull(); // 4×
+  });
+
+  it("returns EMPTY error for empty chain", () => {
+    const result = validateChain([], 5000);
+    expect(result).not.toBeNull();
+    expect(result!.code).toBe("EMPTY");
   });
 });
