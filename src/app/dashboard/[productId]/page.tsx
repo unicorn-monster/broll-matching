@@ -92,7 +92,6 @@ export default function WorkspacePage() {
           <ClipGrid
             clips={displayedClips}
             productId={productId}
-            folders={folders}
             activeFolderId={activeFolderId}
             onClipsChanged={loadAllClips}
             fileQuery={fileQuery}

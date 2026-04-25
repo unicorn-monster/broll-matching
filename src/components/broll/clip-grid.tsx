@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input";
 import { getThumbnail } from "@/lib/clip-storage";
 import { deriveBaseName, isValidBrollName } from "@/lib/broll";
 import { formatMs } from "@/lib/format-time";
-import type { Folder } from "./folder-sidebar";
 import { ClipUpload } from "./clip-upload";
 
 type Clip = {
@@ -18,7 +17,6 @@ type Clip = {
 interface ClipGridProps {
   clips: Clip[];
   productId: string;
-  folders: Folder[];
   activeFolderId: string | null;
   onClipsChanged: () => void;
   fileQuery: string;
@@ -37,7 +35,7 @@ function ThumbnailImage({ clipId }: { clipId: string }) {
     : <div className="w-full h-full bg-muted flex items-center justify-center text-xs text-muted-foreground">No preview</div>;
 }
 
-export function ClipGrid({ clips, productId, folders, activeFolderId, onClipsChanged, fileQuery, onFileQueryChange }: ClipGridProps) {
+export function ClipGrid({ clips, productId, activeFolderId, onClipsChanged, fileQuery, onFileQueryChange }: ClipGridProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [showUpload, setShowUpload] = useState(false);
