@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { RefreshCw, AlertTriangle, Lock } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { RefreshCw, AlertTriangle, Lock, Layers } from "lucide-react";
 import { getThumbnail } from "@/lib/clip-storage";
-import { buildClipsByBaseName, matchSections, type MatchedSection, type ClipMetadata, HIGH_SPEED_THRESHOLD } from "@/lib/auto-match";
+import { buildClipsByBaseName, matchSections, type MatchedSection, type MatchedClip, type ClipMetadata, HIGH_SPEED_THRESHOLD } from "@/lib/auto-match";
+import { SectionEditorDialog } from "./section-editor/section-editor-dialog";
 import { cn } from "@/lib/utils";
 import { deriveBaseName } from "@/lib/broll";
 import type { ParsedSection } from "@/lib/script-parser";
@@ -55,6 +56,35 @@ function MissingPanel({ timeline }: { timeline: MatchedSection[] }) {
 
 export function TimelinePreview({ timeline, productId, onTimelineChange }: TimelinePreviewProps) {
   const [confirmRerollIdx, setConfirmRerollIdx] = useState<number | null>(null);
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+
+  const resolveSectionClips = useCallback(async (clips: MatchedClip[]): Promise<ClipMetadata[]> => {
+    const real = clips.filter((c) => !c.isPlaceholder);
+    if (real.length === 0) return [];
+    const res = await fetch(`/api/products/${productId}/clips`);
+    const raw = await res.json();
+    const byId = new Map<string, ClipMetadata>();
+    for (const c of raw) {
+      byId.set(c.id, {
+        ...c,
+        baseName: deriveBaseName(c.brollName),
+        createdAt: new Date(c.createdAt),
+      });
+    }
+    return real.flatMap((c) => {
+      const meta = byId.get(c.clipId);
+      return meta ? [meta] : [];
+    });
+  }, [productId]);
+
+  function handleSectionSave(sectionIndex: number, newClips: MatchedClip[]) {
+    onTimelineChange(
+      timeline.map((s, i) =>
+        i === sectionIndex ? { ...s, clips: newClips, userLocked: true } : s,
+      ),
+    );
+    setEditingIdx(null);
+  }
 
   async function performReroll(sectionIndex: number) {
     const section = timeline[sectionIndex];
@@ -146,6 +176,9 @@ export function TimelinePreview({ timeline, productId, onTimelineChange }: Timel
                 ))}
               </div>
 
+              <button onClick={() => setEditingIdx(i)} className="shrink-0 text-muted-foreground hover:text-primary" title="Browse variants">
+                <Layers className="w-4 h-4" />
+              </button>
               <button onClick={() => reroll(i)} className="shrink-0 text-muted-foreground hover:text-primary" title="Re-roll">
                 <RefreshCw className="w-4 h-4" />
               </button>
@@ -153,6 +186,17 @@ export function TimelinePreview({ timeline, productId, onTimelineChange }: Timel
           );
         })}
       </div>
+
+      {editingIdx !== null && (
+        <SectionEditorDialog
+          open={editingIdx !== null}
+          onOpenChange={(open) => { if (!open) setEditingIdx(null); }}
+          productId={productId}
+          section={timeline[editingIdx]!}
+          resolveSectionClips={resolveSectionClips}
+          onSave={(newClips) => handleSectionSave(editingIdx, newClips)}
+        />
+      )}
 
       <Dialog
         open={confirmRerollIdx !== null}
