@@ -8,6 +8,15 @@ import { cn } from "@/lib/utils";
 import { deriveBaseName } from "@/lib/broll";
 import type { ParsedSection } from "@/lib/script-parser";
 import { formatMs } from "@/lib/format-time";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 interface TimelinePreviewProps {
   timeline: MatchedSection[];
@@ -45,7 +54,9 @@ function MissingPanel({ timeline }: { timeline: MatchedSection[] }) {
 }
 
 export function TimelinePreview({ timeline, productId, onTimelineChange }: TimelinePreviewProps) {
-  async function reroll(sectionIndex: number) {
+  const [confirmRerollIdx, setConfirmRerollIdx] = useState<number | null>(null);
+
+  async function performReroll(sectionIndex: number) {
     const section = timeline[sectionIndex];
     const clipsRes = await fetch(`/api/products/${productId}/clips`);
     const rawClips = await clipsRes.json();
@@ -55,7 +66,6 @@ export function TimelinePreview({ timeline, productId, onTimelineChange }: Timel
       createdAt: new Date(c.createdAt),
     }));
     const map = buildClipsByBaseName(clips);
-    // durationMs is already frame-aligned from the original parse; matchSections only consumes tag + durationMs
     const fakeSection: ParsedSection = {
       lineNumber: sectionIndex + 1,
       startTime: 0,
@@ -66,6 +76,14 @@ export function TimelinePreview({ timeline, productId, onTimelineChange }: Timel
     };
     const [rerolled] = matchSections([fakeSection], map);
     onTimelineChange(timeline.map((s, i) => (i === sectionIndex ? rerolled : s)));
+  }
+
+  function reroll(sectionIndex: number) {
+    if (timeline[sectionIndex].userLocked) {
+      setConfirmRerollIdx(sectionIndex);
+      return;
+    }
+    void performReroll(sectionIndex);
   }
 
   return (
@@ -131,6 +149,32 @@ export function TimelinePreview({ timeline, productId, onTimelineChange }: Timel
           );
         })}
       </div>
+
+      <Dialog
+        open={confirmRerollIdx !== null}
+        onOpenChange={(open) => { if (!open) setConfirmRerollIdx(null); }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reset to auto-pick?</DialogTitle>
+            <DialogDescription>
+              This section was set manually. Re-rolling will replace your pick with a random variant.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmRerollIdx(null)}>Cancel</Button>
+            <Button
+              onClick={() => {
+                const idx = confirmRerollIdx;
+                setConfirmRerollIdx(null);
+                if (idx !== null) void performReroll(idx);
+              }}
+            >
+              Reset
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
