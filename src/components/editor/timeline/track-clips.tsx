@@ -23,6 +23,7 @@ export function TrackClips({ timeline, pxPerSecond, selectedIndex, onSelect }: T
         return (
           <div
             key={i}
+            data-clip-block
             onClick={() => onSelect(i)}
             className={cn(
               "absolute top-1 bottom-1 rounded-sm border overflow-hidden flex gap-px cursor-pointer",

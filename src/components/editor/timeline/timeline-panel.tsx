@@ -19,6 +19,7 @@ export function TimelinePanel() {
     selectedSectionIndex,
     setSelectedSectionIndex,
     playheadMs,
+    playerSeekRef,
   } = useBuildState();
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
@@ -54,6 +55,14 @@ export function TimelinePanel() {
   const playheadLeft = (playheadMs / 1000) * effectivePxPerSec;
   const totalWidthPx = (totalMs / 1000) * effectivePxPerSec;
 
+  function handleScrubClick(e: React.MouseEvent<HTMLDivElement>) {
+    if ((e.target as HTMLElement).closest("button,[data-clip-block]")) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const ms = (x / effectivePxPerSec) * 1000;
+    playerSeekRef.current?.(Math.max(0, ms));
+  }
+
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center gap-2 px-3 py-1 border-b border-border bg-muted/20 text-xs">
@@ -69,7 +78,11 @@ export function TimelinePanel() {
       </div>
 
       <div ref={scrollerRef} className="relative flex-1 overflow-x-auto overflow-y-hidden">
-        <div style={{ width: `${Math.max(totalWidthPx, 1)}px` }} className="relative">
+        <div
+          style={{ width: `${Math.max(totalWidthPx, 1)}px` }}
+          className="relative cursor-pointer"
+          onClick={handleScrubClick}
+        >
           <TimelineRuler totalMs={totalMs} pxPerSecond={effectivePxPerSec} />
           {timeline ? (
             <>
