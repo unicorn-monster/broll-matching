@@ -1,7 +1,7 @@
 // src/components/editor/dialogs/script-dialog.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -28,10 +28,14 @@ interface ScriptDialogProps {
 export function ScriptDialog({ open, onOpenChange, productId }: ScriptDialogProps) {
   const { scriptText, setScriptText, timeline, onParsed, setTimeline } = useBuildState();
   const [availableBaseNames, setAvailableBaseNames] = useState<Set<string>>(new Set());
+  // Tracks the in-flight clip fetch so a stale resolution can't overwrite newer state
+  // when the dialog is rapidly reopened or handleParsed is called twice.
+  const inFlightRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!open) return;
-    fetch(`/api/products/${productId}/clips`)
+    const ctrl = new AbortController();
+    fetch(`/api/products/${productId}/clips`, { signal: ctrl.signal })
       .then((r) => {
         if (!r.ok) throw new Error(`Failed to fetch clips: ${r.status}`);
         return r.json();
@@ -39,19 +43,28 @@ export function ScriptDialog({ open, onOpenChange, productId }: ScriptDialogProp
       .then((clips: { brollName: string }[]) => {
         setAvailableBaseNames(new Set(clips.map((c) => deriveBaseName(c.brollName))));
       })
-      .catch(() => {
+      .catch((e: unknown) => {
+        if (e instanceof Error && e.name === "AbortError") return;
         // Silent — availableBaseNames stays empty; ScriptPaste still works without hints
       });
+    return () => ctrl.abort();
   }, [productId, open]);
 
   async function handleParsed(newSections: ParsedSection[], freshTimeline: MatchedSection[]) {
+    // Cancel any prior in-flight handleParsed fetch so its late resolution can't
+    // clobber a newer parse (e.g., user pastes twice in quick succession).
+    inFlightRef.current?.abort();
+    const ctrl = new AbortController();
+    inFlightRef.current = ctrl;
+
     const hasLocks = !!timeline && timeline.some((s) => s.userLocked);
     if (!hasLocks) {
       onParsed(newSections, freshTimeline);
       onOpenChange(false);
       return;
     }
-    const clipsRes = await fetch(`/api/products/${productId}/clips`);
+    const clipsRes = await fetch(`/api/products/${productId}/clips`, { signal: ctrl.signal });
+    if (ctrl.signal.aborted) return;
     if (!clipsRes.ok) {
       onParsed(newSections, freshTimeline);
       onOpenChange(false);
@@ -59,6 +72,7 @@ export function ScriptDialog({ open, onOpenChange, productId }: ScriptDialogProp
     }
     interface RawClip { brollName: string; createdAt: string; [key: string]: unknown }
     const rawClips: RawClip[] = await clipsRes.json();
+    if (ctrl.signal.aborted) return;
     const clips: ClipMetadata[] = rawClips.map((c) => ({
       ...c,
       baseName: deriveBaseName(c.brollName),

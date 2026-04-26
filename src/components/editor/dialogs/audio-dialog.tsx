@@ -1,7 +1,7 @@
 // src/components/editor/dialogs/audio-dialog.tsx
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -24,6 +24,17 @@ export function AudioDialog({ open, onOpenChange }: AudioDialogProps) {
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [pendingDuration, setPendingDuration] = useState<number | null>(null);
   const [confirmReplace, setConfirmReplace] = useState(false);
+
+  // Reset confirm-replace state when the parent dialog closes. Otherwise, if the
+  // user closes (e.g., via Esc) while the confirm dialog was queued, it would
+  // pop immediately on next open with the stale pending file.
+  useEffect(() => {
+    if (!open) {
+      setConfirmReplace(false);
+      setPendingFile(null);
+      setPendingDuration(null);
+    }
+  }, [open]);
 
   function handleFile(file: File | null, duration: number | null) {
     if (sections && audioFile && file && file !== audioFile) {
