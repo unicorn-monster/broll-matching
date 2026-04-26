@@ -10,6 +10,7 @@ import { ExportButton } from "./toolbar/export-button";
 import { AudioDialog } from "./dialogs/audio-dialog";
 import { ScriptDialog } from "./dialogs/script-dialog";
 import { ExportDialog } from "./dialogs/export-dialog";
+import { LibraryPanel } from "./library/library-panel";
 
 interface EditorShellProps {
   productId: string;
@@ -49,8 +50,8 @@ export function EditorShell({ productId }: EditorShellProps) {
         </div>
       </div>
 
-      <div className="row-start-2 col-start-1 border-r border-border overflow-hidden flex items-center justify-center text-muted-foreground text-sm">
-        Library
+      <div className="row-start-2 col-start-1 border-r border-border overflow-hidden">
+        <LibraryPanel productId={productId} />
       </div>
       <div className="row-start-2 col-start-2 overflow-hidden flex items-center justify-center text-muted-foreground text-sm bg-black/30">
         Preview
