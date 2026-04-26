@@ -2,8 +2,8 @@
 "use client";
 
 import { createContext, useContext, useMemo, useState } from "react";
-import type { ParsedSection } from "@/lib/script-parser";
 import type { MatchedSection } from "@/lib/auto-match";
+import type { ParsedSection } from "@/lib/script-parser";
 
 interface BuildState {
   // Project inputs
