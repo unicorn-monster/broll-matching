@@ -29,47 +29,69 @@ export function LibraryPanel({ productId }: LibraryPanelProps) {
     if (q.trim()) setActiveFolderId(null);
   }
 
-  async function loadFolders() {
-    const res = await fetch(`/api/products/${productId}/folders`);
-    setFolders(await res.json());
-  }
-  async function loadAllClips() {
-    const res = await fetch(`/api/products/${productId}/clips`);
-    setClips(await res.json());
-  }
-
   useEffect(() => {
-    loadFolders();
-    loadAllClips();
+    const controller = new AbortController();
+    const { signal } = controller;
+    let cancelled = false;
+
+    async function load() {
+      const [foldersRes, clipsRes] = await Promise.all([
+        fetch(`/api/products/${productId}/folders`, { signal }),
+        fetch(`/api/products/${productId}/clips`, { signal }),
+      ]);
+      if (cancelled) return;
+      if (foldersRes.ok) setFolders(await foldersRes.json());
+      if (clipsRes.ok) setClips(await clipsRes.json());
+    }
+
+    load().catch(() => {});
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [productId]);
 
+  async function refreshFolders() {
+    const res = await fetch(`/api/products/${productId}/folders`);
+    if (res.ok) setFolders(await res.json());
+  }
+
+  async function refreshClips() {
+    const res = await fetch(`/api/products/${productId}/clips`);
+    if (res.ok) setClips(await res.json());
+  }
+
   async function handleCreateFolder(name: string) {
-    await fetch(`/api/products/${productId}/folders`, {
+    const res = await fetch(`/api/products/${productId}/folders`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
     });
-    await loadFolders();
+    if (res.ok) await refreshFolders();
   }
+
   async function handleRenameFolder(id: string, name: string) {
-    await fetch(`/api/products/${productId}/folders/${id}`, {
+    const res = await fetch(`/api/products/${productId}/folders/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
     });
-    await loadFolders();
+    if (res.ok) await refreshFolders();
   }
+
   async function handleDeleteFolder(id: string) {
     if (!confirm("Delete this folder and all its clips?")) return;
     const res = await fetch(`/api/products/${productId}/folders/${id}`, { method: "DELETE" });
+    if (!res.ok) return;
     const { deletedClipIds } = await res.json();
     if (deletedClipIds?.length) {
       const { deleteProductClips } = await import("@/lib/clip-storage");
       await deleteProductClips(deletedClipIds);
     }
     if (activeFolderId === id) setActiveFolderId(null);
-    await loadFolders();
-    await loadAllClips();
+    await refreshFolders();
+    await refreshClips();
   }
 
   const displayedClips = fileQuery.trim()
@@ -94,7 +116,7 @@ export function LibraryPanel({ productId }: LibraryPanelProps) {
           clips={displayedClips}
           productId={productId}
           activeFolderId={activeFolderId}
-          onClipsChanged={loadAllClips}
+          onClipsChanged={refreshClips}
           fileQuery={fileQuery}
           onFileQueryChange={handleFileQueryChange}
         />
