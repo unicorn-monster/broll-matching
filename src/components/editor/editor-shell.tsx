@@ -12,6 +12,8 @@ import { ScriptDialog } from "./dialogs/script-dialog";
 import { ExportDialog } from "./dialogs/export-dialog";
 import { LibraryPanel } from "./library/library-panel";
 import { InspectorPanel } from "./inspector/inspector-panel";
+import { TimelinePanel } from "./timeline/timeline-panel";
+import { PreviewPlayer } from "./preview/preview-player";
 
 interface EditorShellProps {
   productId: string;
@@ -54,14 +56,14 @@ export function EditorShell({ productId }: EditorShellProps) {
       <div className="row-start-2 col-start-1 border-r border-border overflow-hidden">
         <LibraryPanel productId={productId} />
       </div>
-      <div className="row-start-2 col-start-2 overflow-hidden flex items-center justify-center text-muted-foreground text-sm bg-black/30">
-        Preview
+      <div className="row-start-2 col-start-2 overflow-hidden bg-black/30">
+        <PreviewPlayer />
       </div>
       <div className="row-start-2 col-start-3 border-l border-border overflow-hidden">
         <InspectorPanel productId={productId} />
       </div>
-      <div className="col-span-3 row-start-3 border-t border-border overflow-hidden flex items-center justify-center text-muted-foreground text-sm bg-muted/10">
-        Timeline
+      <div className="col-span-3 row-start-3 border-t border-border overflow-hidden">
+        <TimelinePanel />
       </div>
 
       <AudioDialog open={audioDialogOpen} onOpenChange={setAudioDialogOpen} />
