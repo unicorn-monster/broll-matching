@@ -1,10 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Play, Pause } from "lucide-react";
 import { useBuildState } from "@/components/build/build-state-context";
 import { getClip } from "@/lib/clip-storage";
-import { buildSectionPlaybackPlan, type PlaybackPlan } from "@/lib/playback-plan";
+import {
+  buildFullTimelinePlaybackPlan,
+  findClipAtMs,
+  findSectionAtMs,
+  type PlaybackPlanClip,
+} from "@/lib/playback-plan";
 import { formatMs } from "@/lib/format-time";
 
 export function PreviewPlayer() {
@@ -12,7 +17,9 @@ export function PreviewPlayer() {
     audioFile,
     timeline,
     selectedSectionIndex,
+    setSelectedSectionIndex,
     setPlayheadMs,
+    playerSeekRef,
   } = useBuildState();
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -20,9 +27,12 @@ export function PreviewPlayer() {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [clipUrls, setClipUrls] = useState<Map<string, string>>(new Map());
   const clipUrlsRef = useRef<Map<string, string>>(new Map());
-  const [chainIdx, setChainIdx] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const currentClipRef = useRef<PlaybackPlanClip | null>(null);
+  const selectedSectionRef = useRef<number | null>(selectedSectionIndex);
+  selectedSectionRef.current = selectedSectionIndex;
 
+  // Audio object URL.
   useEffect(() => {
     if (!audioFile) {
       setAudioUrl(null);
@@ -33,7 +43,7 @@ export function PreviewPlayer() {
     return () => URL.revokeObjectURL(url);
   }, [audioFile]);
 
-  // Revoke all accumulated clip blob URLs only on full unmount.
+  // Revoke clip blob URLs only on full unmount.
   useEffect(() => {
     const ref = clipUrlsRef;
     return () => {
@@ -42,21 +52,23 @@ export function PreviewPlayer() {
     };
   }, []);
 
+  // Eager pre-fetch every real clip the moment timeline is set so playback
+  // never stalls on an IndexedDB read mid-scrub.
   useEffect(() => {
-    if (!timeline || selectedSectionIndex === null) return;
-    const section = timeline[selectedSectionIndex];
-    if (!section) return;
+    if (!timeline) return;
     let cancelled = false;
     (async () => {
       const additions = new Map<string, string>();
-      for (const c of section.clips) {
-        if (c.isPlaceholder) continue;
-        if (clipUrlsRef.current.has(c.indexeddbKey)) continue;
-        const buf = await getClip(c.indexeddbKey);
-        if (cancelled || !buf) continue;
-        const url = URL.createObjectURL(new Blob([buf], { type: "video/mp4" }));
-        clipUrlsRef.current.set(c.indexeddbKey, url);
-        additions.set(c.indexeddbKey, url);
+      for (const section of timeline) {
+        for (const c of section.clips) {
+          if (c.isPlaceholder) continue;
+          if (clipUrlsRef.current.has(c.indexeddbKey)) continue;
+          const buf = await getClip(c.indexeddbKey);
+          if (cancelled || !buf) continue;
+          const url = URL.createObjectURL(new Blob([buf], { type: "video/mp4" }));
+          clipUrlsRef.current.set(c.indexeddbKey, url);
+          additions.set(c.indexeddbKey, url);
+        }
       }
       if (!cancelled && additions.size > 0) {
         setClipUrls((prev) => {
@@ -69,87 +81,130 @@ export function PreviewPlayer() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timeline, selectedSectionIndex]);
+  }, [timeline]);
 
-  const plan: PlaybackPlan | null = useMemo(() => {
-    if (!timeline || selectedSectionIndex === null || !audioUrl) return null;
-    return buildSectionPlaybackPlan(timeline, selectedSectionIndex, audioUrl, clipUrls);
-  }, [timeline, selectedSectionIndex, audioUrl, clipUrls]);
+  const plan = useMemo(() => {
+    if (!timeline || !audioUrl) return null;
+    return buildFullTimelinePlaybackPlan(timeline, audioUrl, clipUrls);
+  }, [timeline, audioUrl, clipUrls]);
 
+  // Imperatively swap <video> src to the clip that should be on screen at
+  // audioMs. Idempotent — bails when the same clip is already loaded so
+  // setting currentTime mid-clip is a cheap no-op.
+  const ensureClipLoaded = useCallback(
+    (audioMs: number) => {
+      const video = videoRef.current;
+      if (!video || !plan) return;
+      const clip = findClipAtMs(plan.clips, audioMs);
+      if (currentClipRef.current === clip) return;
+      currentClipRef.current = clip;
+      if (!clip) {
+        video.removeAttribute("src");
+        video.load();
+        return;
+      }
+      video.src = clip.srcUrl;
+      video.playbackRate = clip.speedFactor;
+      const offsetSec = ((audioMs - clip.startMs) * clip.speedFactor) / 1000;
+      const seekWhenReady = () => {
+        try {
+          video.currentTime = Math.max(0, offsetSec);
+        } catch {
+          // ignore seek errors — currentTime can throw if metadata not yet ready
+        }
+        if (audioRef.current && !audioRef.current.paused) void video.play();
+      };
+      if (video.readyState >= 1) seekWhenReady();
+      else video.addEventListener("loadedmetadata", seekWhenReady, { once: true });
+    },
+    [plan],
+  );
+
+  // Register seek dispatcher for the timeline.
   useEffect(() => {
-    if (!plan) return;
-    setChainIdx(0);
-    setPlaying(false);
-    const audio = audioRef.current;
-    if (audio) {
-      audio.currentTime = plan.audioStartMs / 1000;
-      audio.pause();
-    }
-  }, [plan]);
-
-  useEffect(() => {
-    if (!plan || plan.clips.length === 0) return;
-    const video = videoRef.current;
-    if (!video) return;
-    const clip = plan.clips[chainIdx];
-    if (!clip) return;
-    video.src = clip.srcUrl;
-    video.playbackRate = clip.speedFactor;
-    if (playing) void video.play();
-  }, [plan, chainIdx, playing]);
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio || !plan) return;
-    const handler = () => {
-      setPlayheadMs(audio.currentTime * 1000);
+    playerSeekRef.current = (ms: number) => {
+      const audio = audioRef.current;
+      if (!audio) return;
+      audio.currentTime = Math.max(0, ms / 1000);
+      setPlayheadMs(ms);
+      ensureClipLoaded(ms);
     };
-    audio.addEventListener("timeupdate", handler);
-    return () => audio.removeEventListener("timeupdate", handler);
-  }, [plan, setPlayheadMs]);
+    return () => {
+      playerSeekRef.current = null;
+    };
+  }, [ensureClipLoaded, playerSeekRef, setPlayheadMs]);
 
-  function handleVideoEnded() {
-    if (!plan) return;
-    if (chainIdx < plan.clips.length - 1) {
-      setChainIdx(chainIdx + 1);
-    } else {
-      audioRef.current?.pause();
-      setPlaying(false);
+  // rAF loop: drives playhead, swap detection, and section selection from
+  // audio.currentTime while playing.
+  useEffect(() => {
+    if (!playing || !plan || !timeline) return;
+    let raf = 0;
+    const tick = () => {
+      const audio = audioRef.current;
+      if (!audio) return;
+      const audioMs = audio.currentTime * 1000;
+      setPlayheadMs(audioMs);
+      ensureClipLoaded(audioMs);
+      const sectionIdx = findSectionAtMs(timeline, audioMs);
+      if (sectionIdx !== null && sectionIdx !== selectedSectionRef.current) {
+        selectedSectionRef.current = sectionIdx;
+        setSelectedSectionIndex(sectionIdx);
+      }
+      if (audio.ended) {
+        setPlaying(false);
+        return;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [playing, plan, timeline, ensureClipLoaded, setPlayheadMs, setSelectedSectionIndex]);
+
+  // When user clicks a section in the timeline (sets selectedSectionIndex
+  // directly, not via the rAF loop), seek the audio to that section's start.
+  useEffect(() => {
+    if (selectedSectionIndex === null || !timeline || !plan) return;
+    const audio = audioRef.current;
+    if (!audio) return;
+    let cursor = 0;
+    for (let i = 0; i < selectedSectionIndex; i++) cursor += timeline[i]!.durationMs;
+    // Avoid feedback: only seek when the audio is more than 100ms away from
+    // this section's start. Otherwise the rAF loop's own selection update
+    // would re-trigger a seek.
+    if (Math.abs(audio.currentTime * 1000 - cursor) > 100) {
+      audio.currentTime = cursor / 1000;
+      setPlayheadMs(cursor);
+      ensureClipLoaded(cursor);
     }
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSectionIndex]);
 
   function togglePlay() {
     const audio = audioRef.current;
-    const video = videoRef.current;
-    if (!audio || !video) return;
+    if (!audio) return;
     if (playing) {
       audio.pause();
-      video.pause();
+      videoRef.current?.pause();
       setPlaying(false);
     } else {
+      ensureClipLoaded(audio.currentTime * 1000);
       void audio.play();
-      void video.play();
+      void videoRef.current?.play();
       setPlaying(true);
     }
   }
 
-  if (!timeline || selectedSectionIndex === null) {
+  if (!audioFile) {
     return (
       <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
-        Select a section in the timeline to preview.
+        Set audio in the toolbar to begin.
       </div>
     );
   }
 
-  const section = timeline[selectedSectionIndex];
-  if (!section) {
-    return (
-      <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
-        Section not found.
-      </div>
-    );
-  }
+  const totalMs = timeline?.reduce((s, x) => s + x.durationMs, 0) ?? 0;
+  const playheadSection =
+    timeline && selectedSectionIndex !== null ? timeline[selectedSectionIndex] : null;
 
   return (
     <div className="h-full flex flex-col items-center justify-center gap-2 p-3">
@@ -157,17 +212,12 @@ export function PreviewPlayer() {
         className="bg-black rounded overflow-hidden flex items-center justify-center"
         style={{ aspectRatio: "9 / 16", height: "calc(100% - 48px)", maxWidth: "100%" }}
       >
-        {plan && plan.clips.length > 0 ? (
-          <video
-            ref={videoRef}
-            playsInline
-            muted
-            onEnded={handleVideoEnded}
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <div className="text-xs text-muted-foreground">Black frame (no clip for [{section.tag}])</div>
-        )}
+        <video
+          ref={videoRef}
+          playsInline
+          muted
+          className="w-full h-full object-cover"
+        />
       </div>
       <audio ref={audioRef} src={audioUrl ?? undefined} preload="auto" />
 
@@ -180,8 +230,10 @@ export function PreviewPlayer() {
         >
           {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
         </button>
-        <span className="font-mono">{formatMs(section.durationMs)}</span>
-        <span>· [{section.tag}]</span>
+        <span className="font-mono">
+          {formatMs((audioRef.current?.currentTime ?? 0) * 1000)} / {formatMs(totalMs)}
+        </span>
+        {playheadSection && <span>· [{playheadSection.tag}]</span>}
       </div>
     </div>
   );
