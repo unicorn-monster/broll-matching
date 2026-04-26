@@ -2,8 +2,10 @@ import { describe, it, expect } from "vitest";
 import { buildSectionPlaybackPlan } from "../playback-plan";
 import type { MatchedSection } from "../auto-match";
 
+// First arg (clip duration) is informational only — MatchedClip carries
+// speedFactor + indexeddbKey, not its own duration. Keeps call sites readable.
 const seg = (
-  durationMs: number,
+  _durationMs: number,
   speedFactor: number,
   isPlaceholder = false,
   i = 0,
