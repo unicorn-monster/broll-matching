@@ -32,9 +32,15 @@ export function ScriptDialog({ open, onOpenChange, productId }: ScriptDialogProp
   useEffect(() => {
     if (!open) return;
     fetch(`/api/products/${productId}/clips`)
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`Failed to fetch clips: ${r.status}`);
+        return r.json();
+      })
       .then((clips: { brollName: string }[]) => {
         setAvailableBaseNames(new Set(clips.map((c) => deriveBaseName(c.brollName))));
+      })
+      .catch(() => {
+        // Silent — availableBaseNames stays empty; ScriptPaste still works without hints
       });
   }, [productId, open]);
 
@@ -46,15 +52,18 @@ export function ScriptDialog({ open, onOpenChange, productId }: ScriptDialogProp
       return;
     }
     const clipsRes = await fetch(`/api/products/${productId}/clips`);
-    const rawClips = await clipsRes.json();
-    const clips: ClipMetadata[] = rawClips.map(
-      (c: Record<string, unknown>) =>
-        ({
-          ...(c as object),
-          baseName: deriveBaseName(c.brollName as string),
-          createdAt: new Date(c.createdAt as string),
-        }) as ClipMetadata,
-    );
+    if (!clipsRes.ok) {
+      onParsed(newSections, freshTimeline);
+      onOpenChange(false);
+      return;
+    }
+    interface RawClip { brollName: string; createdAt: string; [key: string]: unknown }
+    const rawClips: RawClip[] = await clipsRes.json();
+    const clips: ClipMetadata[] = rawClips.map((c) => ({
+      ...c,
+      baseName: deriveBaseName(c.brollName),
+      createdAt: new Date(c.createdAt),
+    }) as ClipMetadata);
     const map = buildClipsByBaseName(clips);
     const oldSnapshot = timeline!;
     const result = preserveLocks(timeline!, newSections, map);
