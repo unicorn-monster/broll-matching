@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildSectionPlaybackPlan } from "../playback-plan";
+import { buildSectionPlaybackPlan, buildFullTimelinePlaybackPlan } from "../playback-plan";
 import type { MatchedSection } from "../auto-match";
 
 // First arg (clip duration) is informational only — MatchedClip carries
@@ -77,5 +77,75 @@ describe("buildSectionPlaybackPlan", () => {
     expect(plan.clips[0]!.srcUrl).toBe("blob:0");
     expect(plan.clips[0]!.startMs).toBe(0);
     expect(plan.clips[0]!.endMs).toBe(1000);
+  });
+});
+
+function s(durationMs: number, clips: { key: string; speed: number; placeholder?: boolean }[]): MatchedSection {
+  return {
+    sectionIndex: 0,
+    tag: "x",
+    durationMs,
+    userLocked: false,
+    warnings: [],
+    clips: clips.map((c) => ({
+      clipId: `id-${c.key}`,
+      indexeddbKey: c.key,
+      speedFactor: c.speed,
+      isPlaceholder: !!c.placeholder,
+    })),
+  };
+}
+
+describe("buildFullTimelinePlaybackPlan", () => {
+  it("returns empty clips when timeline is empty", () => {
+    const plan = buildFullTimelinePlaybackPlan([], "audio.mp3", new Map());
+    expect(plan.clips).toEqual([]);
+    expect(plan.audioUrl).toBe("audio.mp3");
+  });
+
+  it("emits one clip per real chain entry with absolute start/end across sections", () => {
+    const timeline = [
+      s(2000, [{ key: "a", speed: 1 }]),
+      s(3000, [{ key: "b", speed: 2 }, { key: "c", speed: 1.5 }]),
+    ];
+    const urls = new Map([
+      ["a", "blob:a"],
+      ["b", "blob:b"],
+      ["c", "blob:c"],
+    ]);
+    const plan = buildFullTimelinePlaybackPlan(timeline, "audio.mp3", urls);
+    expect(plan.clips).toEqual([
+      { srcUrl: "blob:a", startMs: 0, endMs: 2000, speedFactor: 1 },
+      { srcUrl: "blob:b", startMs: 2000, endMs: 3500, speedFactor: 2 },
+      { srcUrl: "blob:c", startMs: 3500, endMs: 5000, speedFactor: 1.5 },
+    ]);
+  });
+
+  it("skips placeholder-only sections but advances the cursor", () => {
+    const timeline = [
+      s(1000, [{ key: "a", speed: 1 }]),
+      s(2000, [{ key: "_", speed: 1, placeholder: true }]),
+      s(1000, [{ key: "b", speed: 1 }]),
+    ];
+    const urls = new Map([["a", "blob:a"], ["b", "blob:b"]]);
+    const plan = buildFullTimelinePlaybackPlan(timeline, "audio.mp3", urls);
+    expect(plan.clips).toEqual([
+      { srcUrl: "blob:a", startMs: 0, endMs: 1000, speedFactor: 1 },
+      { srcUrl: "blob:b", startMs: 3000, endMs: 4000, speedFactor: 1 },
+    ]);
+  });
+
+  it("skips a real clip whose blob URL is missing but keeps later clips aligned", () => {
+    const timeline = [
+      s(1000, [{ key: "a", speed: 1 }]),
+      s(2000, [{ key: "missing", speed: 1 }]),
+      s(1000, [{ key: "b", speed: 1 }]),
+    ];
+    const urls = new Map([["a", "blob:a"], ["b", "blob:b"]]);
+    const plan = buildFullTimelinePlaybackPlan(timeline, "audio.mp3", urls);
+    expect(plan.clips).toEqual([
+      { srcUrl: "blob:a", startMs: 0, endMs: 1000, speedFactor: 1 },
+      { srcUrl: "blob:b", startMs: 3000, endMs: 4000, speedFactor: 1 },
+    ]);
   });
 });

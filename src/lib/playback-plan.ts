@@ -63,3 +63,36 @@ export function buildSectionPlaybackPlan(
 
   return { clips, audioUrl, audioStartMs };
 }
+
+/**
+ * Builds a playback plan that spans the entire timeline. Clips are emitted in
+ * play order with absolute `startMs`/`endMs` measured from the start of the
+ * master audio. Placeholders and clips with missing blob URLs are skipped, but
+ * the time cursor still advances so subsequent clips stay aligned with the
+ * audio (the player renders black during the gap).
+ */
+export function buildFullTimelinePlaybackPlan(
+  timeline: MatchedSection[],
+  audioUrl: string,
+  clipBlobUrls: Map<string, string>,
+): PlaybackPlan {
+  const clips: PlaybackPlanClip[] = [];
+  let cursor = 0;
+  for (const section of timeline) {
+    const real = section.clips.filter((c) => !c.isPlaceholder);
+    if (real.length === 0) {
+      cursor += section.durationMs;
+      continue;
+    }
+    const slot = section.durationMs / real.length;
+    for (const c of real) {
+      const startMs = cursor;
+      const endMs = cursor + slot;
+      cursor = endMs;
+      const url = clipBlobUrls.get(c.indexeddbKey);
+      if (!url) continue;
+      clips.push({ srcUrl: url, startMs, endMs, speedFactor: c.speedFactor });
+    }
+  }
+  return { clips, audioUrl, audioStartMs: 0 };
+}
