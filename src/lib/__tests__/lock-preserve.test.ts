@@ -56,8 +56,8 @@ describe("preserveLocks", () => {
 
     expect(result.preservedCount).toBe(1);
     expect(result.droppedCount).toBe(0);
-    expect(result.newTimeline[0].userLocked).toBe(true);
-    expect(result.newTimeline[0].clips[0].clipId).toBe("c1");
+    expect(result.newTimeline[0]!.userLocked).toBe(true);
+    expect(result.newTimeline[0]!.clips[0]!.clipId).toBe("c1");
   });
 
   it("preserves locks within ±20% duration tolerance and recomputes speedFactor", () => {
@@ -68,8 +68,8 @@ describe("preserveLocks", () => {
     const result = preserveLocks(old, newSections, map);
 
     expect(result.preservedCount).toBe(1);
-    expect(result.newTimeline[0].clips[0].speedFactor).toBeCloseTo(5000 / 5500, 4);
-    expect(result.newTimeline[0].durationMs).toBe(5500);
+    expect(result.newTimeline[0]!.clips[0]!.speedFactor).toBeCloseTo(5000 / 5500, 4);
+    expect(result.newTimeline[0]!.durationMs).toBe(5500);
   });
 
   it("drops a lock when duration differs by more than 20%", () => {
@@ -81,7 +81,7 @@ describe("preserveLocks", () => {
 
     expect(result.preservedCount).toBe(0);
     expect(result.droppedCount).toBe(1);
-    expect(result.newTimeline[0].userLocked).toBeFalsy();
+    expect(result.newTimeline[0]!.userLocked).toBeFalsy();
   });
 
   it("drops a lock when tag changes", () => {
@@ -95,9 +95,9 @@ describe("preserveLocks", () => {
     const result = preserveLocks(old, newSections, map);
 
     expect(result.droppedCount).toBe(1);
-    expect(result.newTimeline[0].tag).toBe("clipper");
-    expect(result.newTimeline[0].userLocked).toBeFalsy();
-    expect(result.newTimeline[0].clips[0].clipId).toBe("c2");
+    expect(result.newTimeline[0]!.tag).toBe("clipper");
+    expect(result.newTimeline[0]!.userLocked).toBeFalsy();
+    expect(result.newTimeline[0]!.clips[0]!.clipId).toBe("c2");
   });
 
   it("auto-matches new sections that have no locked counterpart", () => {
@@ -112,8 +112,8 @@ describe("preserveLocks", () => {
 
     expect(result.preservedCount).toBe(1);
     expect(result.newTimeline).toHaveLength(2);
-    expect(result.newTimeline[1].tag).toBe("clipper");
-    expect(result.newTimeline[1].userLocked).toBeFalsy();
+    expect(result.newTimeline[1]!.tag).toBe("clipper");
+    expect(result.newTimeline[1]!.userLocked).toBeFalsy();
   });
 
   it("ignores unlocked sections in old timeline (always re-auto-matches)", () => {
@@ -125,7 +125,7 @@ describe("preserveLocks", () => {
 
     expect(result.preservedCount).toBe(0);
     expect(result.droppedCount).toBe(0);
-    expect(result.newTimeline[0].clips[0].clipId).toBe("c2");
+    expect(result.newTimeline[0]!.clips[0]!.clipId).toBe("c2");
   });
 
   it("matches greedily left-to-right, not by similarity", () => {
@@ -144,8 +144,8 @@ describe("preserveLocks", () => {
     // First new (6000ms) consumes first lock (5000ms): tolerance check |6000-5000|/5000 = 0.20
     // exactly = within, so consumed (boundary inclusive).
     expect(result.preservedCount).toBe(2);
-    expect(result.newTimeline[0].clips[0].clipId).toBe("c1");
-    expect(result.newTimeline[1].clips[0].clipId).toBe("c2");
+    expect(result.newTimeline[0]!.clips[0]!.clipId).toBe("c1");
+    expect(result.newTimeline[1]!.clips[0]!.clipId).toBe("c2");
   });
 
   it("counts unconsumed locks as dropped when new script has fewer sections", () => {

@@ -64,10 +64,8 @@ export function preserveLocks(
       preservedCount++;
     } else {
       // matchSections returns one entry per input section, so this is always defined.
-      const matched = matchSections([ns], clipsByBaseName)[0];
-      if (matched) {
-        newTimeline.push({ ...matched, sectionIndex: i });
-      }
+      const matched = matchSections([ns], clipsByBaseName)[0]!;
+      newTimeline.push({ ...matched, sectionIndex: i });
     }
   }
 
