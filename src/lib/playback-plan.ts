@@ -23,7 +23,9 @@ export interface PlaybackPlan {
  * - `clips` is one entry per non-placeholder MatchedClip with a resolved blob URL.
  *   Placeholder-only sections produce an empty array (player renders black).
  *   Clips whose blob hasn't been loaded yet are skipped defensively rather than
- *   blocking playback — caller can re-build the plan once loads finish.
+ *   blocking playback — caller can re-build the plan once loads finish. The
+ *   skipped clip's slot still advances the time cursor so surviving clips stay
+ *   aligned with the master audio (otherwise later clips would slide earlier).
  *
  * `startMs`/`endMs` slot the clips uniformly inside the section duration, which
  * matches how `matchSections` distributes a chain's playback time.
@@ -49,11 +51,14 @@ export function buildSectionPlaybackPlan(
   const slot = section.durationMs / real.length;
   for (const c of real) {
     const url = clipBlobUrls.get(c.indexeddbKey);
-    if (!url) continue;
     const startMs = cursor;
     const endMs = cursor + slot;
-    clips.push({ srcUrl: url, startMs, endMs, speedFactor: c.speedFactor });
+    // Advance cursor unconditionally so a missing blob doesn't slide later
+    // clips earlier and desync them from the master audio. The slot is
+    // claimed even when nothing is emitted (player renders black for the gap).
     cursor = endMs;
+    if (!url) continue;
+    clips.push({ srcUrl: url, startMs, endMs, speedFactor: c.speedFactor });
   }
 
   return { clips, audioUrl, audioStartMs };

@@ -22,7 +22,13 @@ export async function computeWaveformPeaks(
     for (let i = 0; i < peakCount; i++) {
       let max = 0;
       const start = i * windowSize;
-      const end = Math.min(start + windowSize, channel.length);
+      // Floor division leaves a remainder when channel.length is not a
+      // multiple of peakCount. Extend the final window to channel.length
+      // so trailing samples are included in the last peak instead of dropped.
+      const end =
+        i === peakCount - 1
+          ? channel.length
+          : Math.min(start + windowSize, channel.length);
       for (let j = start; j < end; j++) {
         const v = Math.abs(channel[j]!);
         if (v > max) max = v;

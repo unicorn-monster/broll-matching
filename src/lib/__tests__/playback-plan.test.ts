@@ -75,5 +75,7 @@ describe("buildSectionPlaybackPlan", () => {
     const plan = buildSectionPlaybackPlan(timeline, 0, "blob:audio", blobs);
     expect(plan.clips).toHaveLength(1);
     expect(plan.clips[0]!.srcUrl).toBe("blob:0");
+    expect(plan.clips[0]!.startMs).toBe(0);
+    expect(plan.clips[0]!.endMs).toBe(1000);
   });
 });
