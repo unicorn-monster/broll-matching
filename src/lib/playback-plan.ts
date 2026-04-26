@@ -96,3 +96,30 @@ export function buildFullTimelinePlaybackPlan(
   }
   return { clips, audioUrl, audioStartMs: 0 };
 }
+
+/**
+ * Returns the clip whose half-open time range [startMs, endMs) contains ms,
+ * or null when ms falls in a gap (placeholder or missing-blob slot) or past
+ * the last clip. Linear scan — clip count per timeline is small (< 50).
+ */
+export function findClipAtMs(clips: PlaybackPlanClip[], ms: number): PlaybackPlanClip | null {
+  for (const c of clips) {
+    if (ms >= c.startMs && ms < c.endMs) return c;
+  }
+  return null;
+}
+
+/**
+ * Returns the section index whose cumulative duration window contains ms.
+ * Used to keep `selectedSectionIndex` synchronized with the playhead so the
+ * Inspector follows along during playback.
+ */
+export function findSectionAtMs(timeline: MatchedSection[], ms: number): number | null {
+  let cursor = 0;
+  for (let i = 0; i < timeline.length; i++) {
+    const sectionMs = timeline[i]!.durationMs;
+    if (ms >= cursor && ms < cursor + sectionMs) return i;
+    cursor += sectionMs;
+  }
+  return null;
+}

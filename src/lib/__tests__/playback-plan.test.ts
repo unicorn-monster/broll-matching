@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildSectionPlaybackPlan, buildFullTimelinePlaybackPlan } from "../playback-plan";
+import { buildSectionPlaybackPlan, buildFullTimelinePlaybackPlan, findClipAtMs, findSectionAtMs } from "../playback-plan";
 import type { MatchedSection } from "../auto-match";
 
 // First arg (clip duration) is informational only — MatchedClip carries
@@ -147,5 +147,52 @@ describe("buildFullTimelinePlaybackPlan", () => {
       { srcUrl: "blob:a", startMs: 0, endMs: 1000, speedFactor: 1 },
       { srcUrl: "blob:b", startMs: 3000, endMs: 4000, speedFactor: 1 },
     ]);
+  });
+});
+
+describe("findClipAtMs", () => {
+  const clips = [
+    { srcUrl: "blob:a", startMs: 0, endMs: 1000, speedFactor: 1 },
+    { srcUrl: "blob:b", startMs: 1000, endMs: 2500, speedFactor: 1.5 },
+    { srcUrl: "blob:c", startMs: 2500, endMs: 4000, speedFactor: 1 },
+  ];
+
+  it("returns the clip whose half-open range [start, end) contains the ms", () => {
+    expect(findClipAtMs(clips, 0)?.srcUrl).toBe("blob:a");
+    expect(findClipAtMs(clips, 999)?.srcUrl).toBe("blob:a");
+    expect(findClipAtMs(clips, 1000)?.srcUrl).toBe("blob:b");
+    expect(findClipAtMs(clips, 2499)?.srcUrl).toBe("blob:b");
+    expect(findClipAtMs(clips, 2500)?.srcUrl).toBe("blob:c");
+  });
+
+  it("returns null past the last clip's end", () => {
+    expect(findClipAtMs(clips, 4000)).toBeNull();
+    expect(findClipAtMs(clips, 9999)).toBeNull();
+  });
+
+  it("returns null on empty input", () => {
+    expect(findClipAtMs([], 100)).toBeNull();
+  });
+});
+
+describe("findSectionAtMs", () => {
+  const timeline = [s(1000, []), s(2000, []), s(500, [])];
+
+  it("maps an audio time to its containing section index", () => {
+    expect(findSectionAtMs(timeline, 0)).toBe(0);
+    expect(findSectionAtMs(timeline, 999)).toBe(0);
+    expect(findSectionAtMs(timeline, 1000)).toBe(1);
+    expect(findSectionAtMs(timeline, 2999)).toBe(1);
+    expect(findSectionAtMs(timeline, 3000)).toBe(2);
+    expect(findSectionAtMs(timeline, 3499)).toBe(2);
+  });
+
+  it("returns null past the timeline's total duration", () => {
+    expect(findSectionAtMs(timeline, 3500)).toBeNull();
+    expect(findSectionAtMs(timeline, 9999)).toBeNull();
+  });
+
+  it("returns null on empty timeline", () => {
+    expect(findSectionAtMs([], 0)).toBeNull();
   });
 });
