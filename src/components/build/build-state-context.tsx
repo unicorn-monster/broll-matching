@@ -1,7 +1,8 @@
 // src/components/build/build-state-context.tsx
 "use client";
 
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useMemo, useRef, useState } from "react";
+import type { MutableRefObject } from "react";
 import type { MatchedSection } from "@/lib/auto-match";
 import type { ParsedSection } from "@/lib/script-parser";
 
@@ -33,6 +34,9 @@ interface BuildState {
   // Derived
   inspectorMode: "section" | "empty";
   canExport: boolean;
+
+  // Imperative seek handle — player registers on mount, timeline calls it.
+  playerSeekRef: MutableRefObject<((ms: number) => void) | null>;
 }
 
 const BuildStateContext = createContext<BuildState | null>(null);
@@ -49,6 +53,8 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
   const [audioDialogOpen, setAudioDialogOpen] = useState(false);
   const [scriptDialogOpen, setScriptDialogOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
+
+  const playerSeekRef = useRef<((ms: number) => void) | null>(null);
 
   function setAudio(file: File | null, duration: number | null) {
     setAudioFile(file);
@@ -98,6 +104,7 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
       setExportDialogOpen,
       inspectorMode,
       canExport,
+      playerSeekRef,
     };
   }, [
     audioFile,
