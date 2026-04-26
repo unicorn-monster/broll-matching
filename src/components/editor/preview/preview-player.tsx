@@ -19,6 +19,7 @@ export function PreviewPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [clipUrls, setClipUrls] = useState<Map<string, string>>(new Map());
+  const clipUrlsRef = useRef<Map<string, string>>(new Map());
   const [chainIdx, setChainIdx] = useState(0);
   const [playing, setPlaying] = useState(false);
 
@@ -32,31 +33,41 @@ export function PreviewPlayer() {
     return () => URL.revokeObjectURL(url);
   }, [audioFile]);
 
+  // Revoke all accumulated clip blob URLs only on full unmount.
+  useEffect(() => {
+    const ref = clipUrlsRef;
+    return () => {
+      ref.current.forEach((u) => URL.revokeObjectURL(u));
+      ref.current.clear();
+    };
+  }, []);
+
   useEffect(() => {
     if (!timeline || selectedSectionIndex === null) return;
     const section = timeline[selectedSectionIndex];
     if (!section) return;
     let cancelled = false;
-    const created: string[] = [];
     (async () => {
-      const map = new Map<string, string>();
+      const additions = new Map<string, string>();
       for (const c of section.clips) {
         if (c.isPlaceholder) continue;
-        if (clipUrls.has(c.indexeddbKey)) {
-          map.set(c.indexeddbKey, clipUrls.get(c.indexeddbKey)!);
-          continue;
-        }
+        if (clipUrlsRef.current.has(c.indexeddbKey)) continue;
         const buf = await getClip(c.indexeddbKey);
         if (cancelled || !buf) continue;
         const url = URL.createObjectURL(new Blob([buf], { type: "video/mp4" }));
-        created.push(url);
-        map.set(c.indexeddbKey, url);
+        clipUrlsRef.current.set(c.indexeddbKey, url);
+        additions.set(c.indexeddbKey, url);
       }
-      if (!cancelled) setClipUrls((prev) => new Map([...prev, ...map]));
+      if (!cancelled && additions.size > 0) {
+        setClipUrls((prev) => {
+          const next = new Map(prev);
+          additions.forEach((v, k) => next.set(k, v));
+          return next;
+        });
+      }
     })();
     return () => {
       cancelled = true;
-      created.forEach((u) => URL.revokeObjectURL(u));
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeline, selectedSectionIndex]);

@@ -25,7 +25,7 @@ export function PreviewPane({ clip, actionLabel, actionDisabled, onUse }: Previe
     }
     let objectUrl: string | null = null;
     let active = true;
-    getClip(clip.id).then((buf) => {
+    getClip(clip.indexeddbKey).then((buf) => {
       if (!active || !buf) return;
       objectUrl = URL.createObjectURL(new Blob([buf], { type: "video/mp4" }));
       setVideoSrc(objectUrl);
@@ -35,7 +35,7 @@ export function PreviewPane({ clip, actionLabel, actionDisabled, onUse }: Previe
       if (objectUrl) URL.revokeObjectURL(objectUrl);
       setVideoSrc(null);
     };
-  }, [clip?.id]);
+  }, [clip?.indexeddbKey]);
 
   if (!clip) {
     return (

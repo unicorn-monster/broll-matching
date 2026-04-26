@@ -69,7 +69,7 @@ function SlotTile({
   useEffect(() => {
     let objectUrl: string | null = null;
     let active = true;
-    getThumbnail(clip.id).then((buf) => {
+    getThumbnail(clip.indexeddbKey).then((buf) => {
       if (!active || !buf) return;
       objectUrl = URL.createObjectURL(new Blob([buf], { type: "image/jpeg" }));
       setSrc(objectUrl);
@@ -78,7 +78,7 @@ function SlotTile({
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [clip.id]);
+  }, [clip.indexeddbKey]);
 
   return (
     <div className="relative shrink-0 w-20 h-28">

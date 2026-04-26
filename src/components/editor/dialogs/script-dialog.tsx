@@ -34,20 +34,22 @@ export function ScriptDialog({ open, onOpenChange, productId }: ScriptDialogProp
 
   useEffect(() => {
     if (!open) return;
-    const ctrl = new AbortController();
-    fetch(`/api/products/${productId}/clips`, { signal: ctrl.signal })
+    let cancelled = false;
+    fetch(`/api/products/${productId}/clips`)
       .then((r) => {
-        if (!r.ok) throw new Error(`Failed to fetch clips: ${r.status}`);
+        if (!r.ok || cancelled) return;
         return r.json();
       })
-      .then((clips: { brollName: string }[]) => {
+      .then((clips: { brollName: string }[] | undefined) => {
+        if (cancelled || !clips) return;
         setAvailableBaseNames(new Set(clips.map((c) => deriveBaseName(c.brollName))));
       })
-      .catch((e: unknown) => {
-        if (e instanceof Error && e.name === "AbortError") return;
+      .catch(() => {
         // Silent — availableBaseNames stays empty; ScriptPaste still works without hints
       });
-    return () => ctrl.abort();
+    return () => {
+      cancelled = true;
+    };
   }, [productId, open]);
 
   async function handleParsed(newSections: ParsedSection[], freshTimeline: MatchedSection[]) {
@@ -63,7 +65,7 @@ export function ScriptDialog({ open, onOpenChange, productId }: ScriptDialogProp
       onOpenChange(false);
       return;
     }
-    const clipsRes = await fetch(`/api/products/${productId}/clips`, { signal: ctrl.signal });
+    const clipsRes = await fetch(`/api/products/${productId}/clips`);
     if (ctrl.signal.aborted) return;
     if (!clipsRes.ok) {
       onParsed(newSections, freshTimeline);

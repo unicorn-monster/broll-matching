@@ -36,7 +36,7 @@ export function TrackClips({ timeline, pxPerSecond, selectedIndex, onSelect }: T
               c.isPlaceholder ? (
                 <div key={j} className="flex-1 min-w-0 flex items-center justify-center text-red-400 text-xs">▣</div>
               ) : (
-                <ClipThumb key={j} clipId={c.clipId} speedFactor={c.speedFactor} />
+                <ClipThumb key={j} thumbKey={c.indexeddbKey} speedFactor={c.speedFactor} />
               ),
             )}
           </div>
@@ -46,12 +46,12 @@ export function TrackClips({ timeline, pxPerSecond, selectedIndex, onSelect }: T
   );
 }
 
-function ClipThumb({ clipId, speedFactor }: { clipId: string; speedFactor: number }) {
+function ClipThumb({ thumbKey, speedFactor }: { thumbKey: string; speedFactor: number }) {
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
     let url: string | null = null;
     let active = true;
-    getThumbnail(clipId).then((buf) => {
+    getThumbnail(thumbKey).then((buf) => {
       if (!active || !buf) return;
       url = URL.createObjectURL(new Blob([buf], { type: "image/jpeg" }));
       setSrc(url);
@@ -60,7 +60,7 @@ function ClipThumb({ clipId, speedFactor }: { clipId: string; speedFactor: numbe
       active = false;
       if (url) URL.revokeObjectURL(url);
     };
-  }, [clipId]);
+  }, [thumbKey]);
   return (
     <div className="relative flex-1 min-w-0 bg-black/40">
       {src && <img src={src} alt="" className="absolute inset-0 w-full h-full object-cover" />}

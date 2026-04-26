@@ -30,14 +30,12 @@ export function LibraryPanel({ productId }: LibraryPanelProps) {
   }
 
   useEffect(() => {
-    const controller = new AbortController();
-    const { signal } = controller;
     let cancelled = false;
 
     async function load() {
       const [foldersRes, clipsRes] = await Promise.all([
-        fetch(`/api/products/${productId}/folders`, { signal }),
-        fetch(`/api/products/${productId}/clips`, { signal }),
+        fetch(`/api/products/${productId}/folders`),
+        fetch(`/api/products/${productId}/clips`),
       ]);
       if (cancelled) return;
       if (foldersRes.ok) setFolders(await foldersRes.json());
@@ -48,7 +46,6 @@ export function LibraryPanel({ productId }: LibraryPanelProps) {
 
     return () => {
       cancelled = true;
-      controller.abort();
     };
   }, [productId]);
 

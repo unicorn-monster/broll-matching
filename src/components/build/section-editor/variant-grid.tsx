@@ -53,7 +53,7 @@ function VariantTile({
   useEffect(() => {
     let objectUrl: string | null = null;
     let active = true;
-    getThumbnail(clip.id).then((buf) => {
+    getThumbnail(clip.indexeddbKey).then((buf) => {
       if (!active || !buf) return;
       objectUrl = URL.createObjectURL(new Blob([buf], { type: "image/jpeg" }));
       setSrc(objectUrl);
