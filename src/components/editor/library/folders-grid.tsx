@@ -75,7 +75,7 @@ export function FoldersGrid({
 
       <div className="flex-1 overflow-y-auto p-3">
         <div className="grid grid-cols-3 gap-3">
-          <FolderTile
+          <FolderTileCard
             icon={<Layers className="w-10 h-10" />}
             name="All clips"
             count={totalClipCount}
@@ -84,7 +84,7 @@ export function FoldersGrid({
           />
 
           {visibleFolders.map((f) => (
-            <FolderTile
+            <FolderTileCard
               key={f.id}
               icon={<Folder className="w-10 h-10 fill-yellow-400 text-yellow-500" />}
               name={f.name}
@@ -134,7 +134,7 @@ interface FolderTileInnerProps {
   onDelete?: () => void;
 }
 
-function FolderTile({ icon, name, count, tone, onClick, onRename, onDelete }: FolderTileInnerProps) {
+function FolderTileCard({ icon, name, count, tone, onClick, onRename, onDelete }: FolderTileInnerProps) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
