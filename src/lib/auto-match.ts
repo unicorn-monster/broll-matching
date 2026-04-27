@@ -10,6 +10,9 @@ export const MIN_SPEED_FACTOR = 0.8;
 /** Auto-match Case 1 caps speed-up at this factor; above this we trim instead. */
 export const MAX_AUTO_SPEEDUP = 1.3;
 
+/** Auto-match Case 2 always picks exactly this many clips into a chain. */
+export const CHAIN_PAIR_SIZE = 2;
+
 /**
  * Pure helper: returns the uniform speedFactor a chain of clips will play at to fit `sectionMs`.
  * speed = sum(clip durations) / sectionMs. Returns 0 for an empty chain so callers can detect it.
@@ -118,6 +121,14 @@ function pickRandom<T>(arr: T[], avoid?: T): T {
   return choices.length ? choices[Math.floor(Math.random() * choices.length)] : arr[0];
 }
 
+/** Pick two distinct elements from an array. Caller must guarantee arr.length >= 2. */
+function pickTwoDistinct<T>(arr: T[]): [T, T] {
+  const i = Math.floor(Math.random() * arr.length);
+  let j = Math.floor(Math.random() * (arr.length - 1));
+  if (j >= i) j += 1;
+  return [arr[i]!, arr[j]!];
+}
+
 function singleClipMatch(clip: ClipMetadata, sectionMs: number): MatchedClip {
   // Precondition: clip.durationMs >= sectionMs, so speedFactor >= 1.0 (never slows).
   const speedFactor = clip.durationMs / sectionMs;
@@ -183,30 +194,30 @@ export function matchSections(
       };
     }
 
-    // Case 2: no single clip fits — chain clips until total >= section, speed up all uniformly.
-    // Every candidate here has duration < section.durationMs, so the overshoot < section.durationMs,
-    // making the resulting speedFactor strictly < 2.0 (no cap/trim needed).
-    const chain: ClipMetadata[] = [];
-    let totalMs = 0;
-    let lastClip: ClipMetadata | undefined;
-    while (totalMs < section.durationMs) {
-      const clip = pickRandom(candidates, lastClip);
-      chain.push(clip);
-      lastClip = clip;
-      totalMs += clip.durationMs;
+    // Case 2: no single clip fits the section — pick exactly CHAIN_PAIR_SIZE distinct
+    // candidates and adjust the shared speedFactor to fit. No cap, no floor.
+    if (candidates.length < CHAIN_PAIR_SIZE) {
+      warnings.push(`Need ≥${CHAIN_PAIR_SIZE} variants for chain mode (tag: ${section.tag})`);
+      return {
+        sectionIndex,
+        tag: section.tag,
+        durationMs: section.durationMs,
+        clips: [{ clipId: "placeholder", indexeddbKey: "", speedFactor: 1, isPlaceholder: true }],
+        warnings,
+      };
     }
 
+    const [clipA, clipB] = pickTwoDistinct(candidates);
+    const totalMs = clipA.durationMs + clipB.durationMs;
     const speedFactor = totalMs / section.durationMs;
     return {
       sectionIndex,
       tag: section.tag,
       durationMs: section.durationMs,
-      clips: chain.map((c) => ({
-        clipId: c.id,
-        indexeddbKey: c.indexeddbKey,
-        speedFactor,
-        isPlaceholder: false,
-      })),
+      clips: [
+        { clipId: clipA.id, indexeddbKey: clipA.indexeddbKey, speedFactor, isPlaceholder: false },
+        { clipId: clipB.id, indexeddbKey: clipB.indexeddbKey, speedFactor, isPlaceholder: false },
+      ],
       warnings,
     };
   });
