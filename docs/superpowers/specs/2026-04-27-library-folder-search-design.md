@@ -61,12 +61,17 @@ Add a search input to the folders-grid header that filters the visible folder ti
 
 ## Testing
 
-Add a single RTL test file `folders-grid.test.tsx` (or add cases to an existing one if present) covering:
+The project tests pure helpers in `src/lib/__tests__/` with vitest (node env). It has no jsdom / RTL setup — see `clip-filter.ts` + `clip-filter.test.ts` for the established pattern. Match that pattern:
 
-1. Typing into the search input filters folder tiles by name (case-insensitive).
-2. The "All clips" tile remains visible while a query is active.
-3. Clearing the query (or `Escape`) restores the full folder list.
-4. The "New" / create-folder flow remains usable while a query is active.
+1. Extract the filter logic into a pure helper `src/lib/folder-filter.ts`:
+   ```ts
+   export function filterFoldersByName<T extends { name: string }>(folders: T[], query: string): T[]
+   ```
+2. Add vitest cases in `src/lib/__tests__/folder-filter.test.ts`:
+   - Empty / whitespace-only query returns all folders.
+   - Case-insensitive substring match by `name`.
+   - Returns empty array when no folder matches.
+3. Component wiring (search input, `Escape`-clears, "All clips" / "create" tiles always visible) is verified manually in the dev server — consistent with how other UI behaviors in this project are validated.
 
 ## Risks
 
