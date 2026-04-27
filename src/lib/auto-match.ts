@@ -7,6 +7,9 @@ export const HIGH_SPEED_THRESHOLD = 2.0;
 /** Minimum allowed speedFactor when user manually builds a chain. Below this, save is rejected. */
 export const MIN_SPEED_FACTOR = 0.8;
 
+/** Auto-match Case 1 caps speed-up at this factor; above this we trim instead. */
+export const MAX_AUTO_SPEEDUP = 1.3;
+
 /**
  * Pure helper: returns the uniform speedFactor a chain of clips will play at to fit `sectionMs`.
  * speed = sum(clip durations) / sectionMs. Returns 0 for an empty chain so callers can detect it.
@@ -146,15 +149,36 @@ export function matchSections(
       };
     }
 
-    // Case 1: at least one clip is long enough — single clip, speed up or keep 1x (never slow).
+    // Case 1: at least one clip is long enough — speedup if natural ratio <= MAX_AUTO_SPEEDUP,
+    // otherwise trim a longer clip down to section length and play at 1x.
     const longEnough = candidates.filter((c) => c.durationMs >= section.durationMs);
     if (longEnough.length > 0) {
+      const speedupOk = longEnough.filter(
+        (c) => c.durationMs / section.durationMs <= MAX_AUTO_SPEEDUP,
+      );
+      if (speedupOk.length > 0) {
+        const clip = pickRandom(speedupOk);
+        return {
+          sectionIndex,
+          tag: section.tag,
+          durationMs: section.durationMs,
+          clips: [singleClipMatch(clip, section.durationMs)],
+          warnings,
+        };
+      }
+      // Trim fallback: speedFactor stays 1, source is cut to section length.
       const clip = pickRandom(longEnough);
       return {
         sectionIndex,
         tag: section.tag,
         durationMs: section.durationMs,
-        clips: [singleClipMatch(clip, section.durationMs)],
+        clips: [{
+          clipId: clip.id,
+          indexeddbKey: clip.indexeddbKey,
+          speedFactor: 1,
+          trimDurationMs: section.durationMs,
+          isPlaceholder: false,
+        }],
         warnings,
       };
     }

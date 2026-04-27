@@ -47,23 +47,6 @@ describe("buildClipsByBaseName", () => {
 });
 
 describe("matchSections", () => {
-  it("Scenario A: section shorter than clip — speeds up", () => {
-    const clips = [makeClip("hook-01", 8000)];
-    const map = buildClipsByBaseName(clips);
-    const [matched] = matchSections([makeSection("Hook", 4000)], map);
-    expect(matched.clips).toHaveLength(1);
-    expect(matched.clips[0].speedFactor).toBeCloseTo(2.0, 1);
-    expect(matched.clips[0].isPlaceholder).toBe(false);
-  });
-
-  it("Scenario A: speed > 2x — speeds up freely without trim", () => {
-    const clips = [makeClip("hook-01", 20000)];
-    const map = buildClipsByBaseName(clips);
-    const [matched] = matchSections([makeSection("Hook", 4000)], map);
-    expect(matched.clips[0].speedFactor).toBe(5.0);
-    expect(matched.clips[0].trimDurationMs).toBeUndefined();
-  });
-
   it("Scenario B: section longer than clip — chains", () => {
     const clips = [makeClip("hook-01", 3000), makeClip("hook-02", 3000)];
     const map = buildClipsByBaseName(clips);
@@ -85,19 +68,57 @@ describe("matchSections", () => {
     expect(matched.clips).toHaveLength(0);
   });
 
-  it("never slows down: all picked clips play at speedFactor >= 1.0", () => {
-    // Bug reproduction: candidates[0] is long enough (>= section) so the old code
-    // entered Scenario A, but pickRandom could select a SHORTER clip, producing speedFactor < 1.
-    const clips = [
-      makeClip("hook-01", 5000), // long — gates Scenario A
-      makeClip("hook-02", 2000), // short — would cause slow-down if picked
-    ];
+  it("Case 1 speedup-ok: clip <= 1.3x section — picks from speedup-ok subset", () => {
+    // Section 1s, candidates: 1.2s (ratio 1.2 ✓), 5s (ratio 5 ✗), 3s (ratio 3 ✗)
+    const clips = [makeClip("hook-01", 1200), makeClip("hook-02", 5000), makeClip("hook-03", 3000)];
+    const map = buildClipsByBaseName(clips);
+    for (let trial = 0; trial < 50; trial++) {
+      const [matched] = matchSections([makeSection("Hook", 1000)], map);
+      expect(matched.clips).toHaveLength(1);
+      const c = matched.clips[0]!;
+      // Only the 1.2s clip is speedup-ok
+      expect(c.clipId).toBe("hook-01");
+      expect(c.speedFactor).toBeCloseTo(1.2, 4);
+      expect(c.trimDurationMs).toBeUndefined();
+      expect(c.isPlaceholder).toBe(false);
+    }
+  });
+
+  it("Case 1 boundary: clip exactly 1.3x section — speedup mode (inclusive)", () => {
+    // Section 1s, clip 1.3s. Ratio = 1.3 exactly, qualifies as speedup-ok.
+    const clips = [makeClip("hook-01", 1300)];
+    const map = buildClipsByBaseName(clips);
+    const [matched] = matchSections([makeSection("Hook", 1000)], map);
+    expect(matched.clips).toHaveLength(1);
+    const c = matched.clips[0]!;
+    expect(c.speedFactor).toBeCloseTo(1.3, 4);
+    expect(c.trimDurationMs).toBeUndefined();
+  });
+
+  it("Case 1 trim fallback: all longEnough > 1.3x section — trim mode", () => {
+    // Section 1s, candidates all > 1.3s: 2s, 2.4s, 3s.
+    const clips = [makeClip("hook-01", 2000), makeClip("hook-02", 2400), makeClip("hook-03", 3000)];
+    const map = buildClipsByBaseName(clips);
+    for (let trial = 0; trial < 50; trial++) {
+      const [matched] = matchSections([makeSection("Hook", 1000)], map);
+      expect(matched.clips).toHaveLength(1);
+      const c = matched.clips[0]!;
+      expect(c.speedFactor).toBe(1);
+      expect(c.trimDurationMs).toBe(1000);
+      expect(c.isPlaceholder).toBe(false);
+      // The picked clip is one of the longEnough candidates.
+      expect(["hook-01", "hook-02", "hook-03"]).toContain(c.clipId);
+    }
+  });
+
+  it("Case 1 mixed: only picks from speedup-ok subset, never from trim-only candidates", () => {
+    // Section 1s. 1.2s is speedup-ok; 5s would be trim-only. Pick must always be 1.2s.
+    const clips = [makeClip("hook-01", 1200), makeClip("hook-02", 5000)];
     const map = buildClipsByBaseName(clips);
     for (let trial = 0; trial < 100; trial++) {
-      const [matched] = matchSections([makeSection("Hook", 2833)], map);
-      for (const clip of matched.clips) {
-        expect(clip.speedFactor).toBeGreaterThanOrEqual(1.0);
-      }
+      const [matched] = matchSections([makeSection("Hook", 1000)], map);
+      expect(matched.clips[0]!.clipId).toBe("hook-01");
+      expect(matched.clips[0]!.trimDurationMs).toBeUndefined();
     }
   });
 
@@ -115,15 +136,6 @@ describe("matchSections", () => {
       // Never slow
       expect(speeds[0]).toBeGreaterThanOrEqual(1.0);
     }
-  });
-
-  it("single-clip case with only-shorter candidates still avoids slow-down", () => {
-    // Single candidate, shorter than section. Must chain (repeat) rather than slow.
-    const clips = [makeClip("hook-01", 2000)];
-    const map = buildClipsByBaseName(clips);
-    const [matched] = matchSections([makeSection("Hook", 2833)], map);
-    expect(matched.clips.length).toBeGreaterThanOrEqual(2);
-    for (const c of matched.clips) expect(c.speedFactor).toBeGreaterThanOrEqual(1.0);
   });
 });
 
