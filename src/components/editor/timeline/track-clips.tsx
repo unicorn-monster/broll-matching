@@ -37,7 +37,13 @@ export function TrackClips({ timeline, pxPerSecond, selectedIndex, onSelect }: T
               c.isPlaceholder ? (
                 <div key={j} className="flex-1 min-w-0 flex items-center justify-center text-red-400 text-xs">▣</div>
               ) : (
-                <ClipThumb key={j} thumbKey={c.indexeddbKey} speedFactor={c.speedFactor} />
+                <ClipThumb
+                  key={j}
+                  thumbKey={c.indexeddbKey}
+                  speedFactor={c.speedFactor}
+                  trimDurationMs={c.trimDurationMs}
+                  sectionMs={section.durationMs}
+                />
               ),
             )}
           </div>
@@ -47,7 +53,17 @@ export function TrackClips({ timeline, pxPerSecond, selectedIndex, onSelect }: T
   );
 }
 
-function ClipThumb({ thumbKey, speedFactor }: { thumbKey: string; speedFactor: number }) {
+function ClipThumb({
+  thumbKey,
+  speedFactor,
+  trimDurationMs,
+  sectionMs,
+}: {
+  thumbKey: string;
+  speedFactor: number;
+  trimDurationMs?: number | undefined;
+  sectionMs: number;
+}) {
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
     let url: string | null = null;
@@ -62,14 +78,24 @@ function ClipThumb({ thumbKey, speedFactor }: { thumbKey: string; speedFactor: n
       if (url) URL.revokeObjectURL(url);
     };
   }, [thumbKey]);
+
+  const isTrim = trimDurationMs != null;
+  const tooltip = isTrim
+    ? `Trimmed to ${(sectionMs / 1000).toFixed(2)}s (1× speed)`
+    : `${speedFactor.toFixed(2)}× speed`;
+
   return (
-    <div className="relative flex-1 min-w-0 bg-black/40">
+    <div className="relative flex-1 min-w-0 bg-black/40" title={tooltip}>
       {src && <img src={src} alt="" className="absolute inset-0 w-full h-full object-cover" />}
-      {speedFactor !== 1 && (
+      {isTrim ? (
         <span className="absolute bottom-0 right-0 bg-black/70 text-white text-[8px] px-1">
-          {speedFactor.toFixed(1)}×
+          1× ✂
         </span>
-      )}
+      ) : speedFactor !== 1 ? (
+        <span className="absolute bottom-0 right-0 bg-black/70 text-white text-[8px] px-1">
+          {speedFactor.toFixed(2)}×
+        </span>
+      ) : null}
     </div>
   );
 }
