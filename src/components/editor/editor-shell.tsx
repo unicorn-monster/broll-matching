@@ -1,6 +1,7 @@
 // src/components/editor/editor-shell.tsx
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { useBuildState } from "@/components/build/build-state-context";
@@ -11,7 +12,6 @@ import { AudioDialog } from "./dialogs/audio-dialog";
 import { ScriptDialog } from "./dialogs/script-dialog";
 import { ExportDialog } from "./dialogs/export-dialog";
 import { LibraryPanel } from "./library/library-panel";
-import { InspectorPanel } from "./inspector/inspector-panel";
 import { TimelinePanel } from "./timeline/timeline-panel";
 import { PreviewPlayer } from "./preview/preview-player";
 
@@ -27,14 +27,28 @@ export function EditorShell({ productId }: EditorShellProps) {
     setScriptDialogOpen,
     exportDialogOpen,
     setExportDialogOpen,
+    previewClipKey,
+    setPreviewClipKey,
   } = useBuildState();
+
+  useEffect(() => {
+    if (previewClipKey === null) return;
+    function onMouseDown(e: MouseEvent) {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest("[data-broll-thumbnail]")) return;
+      setPreviewClipKey(null);
+    }
+    document.addEventListener("mousedown", onMouseDown, true);
+    return () => document.removeEventListener("mousedown", onMouseDown, true);
+  }, [previewClipKey, setPreviewClipKey]);
 
   return (
     <div
       className="grid h-[calc(100vh-4rem)] w-full bg-background text-foreground"
       style={{
-        gridTemplateColumns: "320px 1fr 360px",
-        gridTemplateRows: "48px 1fr 220px",
+        gridTemplateColumns: "1fr 1fr 1fr",
+        gridTemplateRows: "48px 6fr 4fr",
       }}
     >
       <div className="col-span-3 row-start-1 flex items-center gap-3 px-3 border-b border-border bg-muted/30 text-sm">
@@ -59,8 +73,8 @@ export function EditorShell({ productId }: EditorShellProps) {
       <div className="row-start-2 col-start-2 overflow-hidden bg-black/30">
         <PreviewPlayer />
       </div>
-      <div className="row-start-2 col-start-3 border-l border-border overflow-hidden">
-        <InspectorPanel productId={productId} />
+      <div className="row-start-2 col-start-3 border-l border-border overflow-hidden flex items-center justify-center bg-muted/10 text-xs text-muted-foreground">
+        Coming soon
       </div>
       <div className="col-span-3 row-start-3 border-t border-border overflow-hidden">
         <TimelinePanel />
