@@ -35,6 +35,10 @@ interface BuildState {
   inspectorMode: "section" | "empty";
   canExport: boolean;
 
+  // Broll click-to-preview state.
+  previewClipKey: string | null;
+  setPreviewClipKey: (key: string | null) => void;
+
   // Imperative seek handle — player registers on mount, timeline calls it.
   playerSeekRef: MutableRefObject<((ms: number) => void) | null>;
 }
@@ -53,6 +57,7 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
   const [audioDialogOpen, setAudioDialogOpen] = useState(false);
   const [scriptDialogOpen, setScriptDialogOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [previewClipKey, setPreviewClipKey] = useState<string | null>(null);
 
   const playerSeekRef = useRef<((ms: number) => void) | null>(null);
 
@@ -102,6 +107,8 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
       setScriptDialogOpen,
       exportDialogOpen,
       setExportDialogOpen,
+      previewClipKey,
+      setPreviewClipKey,
       inspectorMode,
       canExport,
       playerSeekRef,
@@ -117,6 +124,7 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
     audioDialogOpen,
     scriptDialogOpen,
     exportDialogOpen,
+    previewClipKey,
   ]);
 
   return <BuildStateContext.Provider value={value}>{children}</BuildStateContext.Provider>;
