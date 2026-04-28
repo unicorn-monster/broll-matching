@@ -8,6 +8,7 @@ import { getThumbnail } from "@/lib/clip-storage";
 import { deriveBaseName, isValidBrollName } from "@/lib/broll";
 import { formatMs } from "@/lib/format-time";
 import { ClipUpload } from "./clip-upload";
+import { useBuildState } from "@/components/build/build-state-context";
 
 type Clip = {
   id: string; brollName: string; filename: string;
@@ -39,6 +40,7 @@ export function ClipGrid({ clips, productId, activeFolderId, onClipsChanged, fil
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [showUpload, setShowUpload] = useState(false);
+  const { setPreviewClipKey } = useBuildState();
 
   const groups = clips.reduce<Record<string, Clip[]>>((acc, clip) => {
     const base = deriveBaseName(clip.brollName);
@@ -139,7 +141,12 @@ export function ClipGrid({ clips, productId, activeFolderId, onClipsChanged, fil
           </h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
             {groupClips.map((clip) => (
-              <div key={clip.id} className="group relative border border-border rounded-lg overflow-hidden bg-muted/20">
+              <div
+                key={clip.id}
+                data-broll-thumbnail
+                onClick={() => setPreviewClipKey(clip.indexeddbKey)}
+                className="group relative border border-border rounded-lg overflow-hidden bg-muted/20 cursor-pointer"
+              >
                 <div className="aspect-[4/5] relative">
                   <ThumbnailImage clipId={clip.indexeddbKey} />
                   <div className="absolute bottom-1 right-1 bg-black/60 text-white text-xs px-1 rounded">
@@ -152,6 +159,7 @@ export function ClipGrid({ clips, productId, activeFolderId, onClipsChanged, fil
                       <Input
                         value={editName}
                         onChange={(e) => setEditName(e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") handleRename(clip);
                           if (e.key === "Escape") setEditingId(null);
@@ -159,7 +167,7 @@ export function ClipGrid({ clips, productId, activeFolderId, onClipsChanged, fil
                         autoFocus
                         className="h-6 text-xs"
                       />
-                      <button onClick={() => handleRename(clip)} className="text-xs text-green-600">✓</button>
+                      <button onClick={(e) => { e.stopPropagation(); handleRename(clip); }} className="text-xs text-green-600">✓</button>
                     </div>
                   ) : (
                     <p className="text-xs truncate font-mono">{clip.brollName}</p>
@@ -167,12 +175,12 @@ export function ClipGrid({ clips, productId, activeFolderId, onClipsChanged, fil
                 </div>
                 <div className="absolute top-1 right-1 hidden group-hover:flex gap-1 bg-black/60 rounded p-0.5">
                   <button
-                    onClick={() => { setEditingId(clip.id); setEditName(clip.brollName); }}
+                    onClick={(e) => { e.stopPropagation(); setEditingId(clip.id); setEditName(clip.brollName); }}
                     className="text-white hover:text-yellow-300"
                   >
                     <Pencil className="w-3 h-3" />
                   </button>
-                  <button onClick={() => handleDelete(clip)} className="text-white hover:text-red-400">
+                  <button onClick={(e) => { e.stopPropagation(); handleDelete(clip); }} className="text-white hover:text-red-400">
                     <Trash2 className="w-3 h-3" />
                   </button>
                 </div>
