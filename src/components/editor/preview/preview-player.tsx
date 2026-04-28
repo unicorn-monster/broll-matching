@@ -11,11 +11,12 @@ import {
   clipIdentityKey,
 } from "@/lib/playback-plan";
 
+import { formatMs } from "@/lib/format-time";
+
 function setVideoSrcIfChanged(video: HTMLVideoElement, url: string) {
   if (video.src === url || video.currentSrc === url) return;
   video.src = url;
 }
-import { formatMs } from "@/lib/format-time";
 
 export function PreviewPlayer() {
   const {
@@ -25,9 +26,12 @@ export function PreviewPlayer() {
     setSelectedSectionIndex,
     setPlayheadMs,
     playerSeekRef,
+    previewClipKey,
+    setPreviewClipKey,
   } = useBuildState();
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const previewVideoRef = useRef<HTMLVideoElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [clipUrls, setClipUrls] = useState<Map<string, string>>(new Map());
@@ -185,6 +189,54 @@ export function PreviewPlayer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSectionIndex]);
 
+  // Drive the preview <video> when previewClipKey is set: pause timeline,
+  // load broll, auto-play once, stop at end frame.
+  useEffect(() => {
+    const previewVideo = previewVideoRef.current;
+    if (!previewVideo) return;
+
+    if (previewClipKey === null) {
+      previewVideo.pause();
+      return;
+    }
+
+    const audio = audioRef.current;
+    const timelineVideo = videoRef.current;
+    if (audio && !audio.paused) audio.pause();
+    if (timelineVideo && !timelineVideo.paused) timelineVideo.pause();
+
+    let cancelled = false;
+    (async () => {
+      let url = clipUrlsRef.current.get(previewClipKey);
+      if (!url) {
+        const buf = await getClip(previewClipKey);
+        if (cancelled || !buf) return;
+        url = URL.createObjectURL(new Blob([buf], { type: "video/mp4" }));
+        clipUrlsRef.current.set(previewClipKey, url);
+      }
+      if (cancelled) return;
+      if (previewVideo.src !== url && previewVideo.currentSrc !== url) {
+        previewVideo.src = url;
+      }
+      previewVideo.muted = false;
+      previewVideo.playbackRate = 1;
+      previewVideo.currentTime = 0;
+      void previewVideo.play();
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewClipKey]);
+
+  // Clear preview when timeline or audio is removed.
+  useEffect(() => {
+    if (!audioFile || !timeline) {
+      if (previewClipKey !== null) setPreviewClipKey(null);
+    }
+  }, [audioFile, timeline, previewClipKey, setPreviewClipKey]);
+
   function togglePlay() {
     const audio = audioRef.current;
     if (!audio) return;
@@ -215,7 +267,7 @@ export function PreviewPlayer() {
   return (
     <div className="h-full flex flex-col items-center justify-center gap-2 p-3">
       <div
-        className="bg-black rounded overflow-hidden flex items-center justify-center"
+        className="bg-black rounded overflow-hidden flex items-center justify-center relative"
         style={{ aspectRatio: "4 / 5", height: "calc(100% - 48px)", maxWidth: "100%" }}
       >
         <video
@@ -223,19 +275,28 @@ export function PreviewPlayer() {
           playsInline
           muted
           className="w-full h-full object-cover"
+          style={{ display: previewClipKey === null ? "block" : "none" }}
+        />
+        <video
+          ref={previewVideoRef}
+          playsInline
+          className="w-full h-full object-cover absolute inset-0"
+          style={{ display: previewClipKey === null ? "none" : "block" }}
         />
       </div>
       <audio ref={audioRef} src={audioUrl ?? undefined} preload="auto" />
 
       <div className="flex items-center gap-3 text-xs text-muted-foreground">
-        <button
-          type="button"
-          onClick={togglePlay}
-          className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
-          aria-label={playing ? "Pause" : "Play"}
-        >
-          {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-        </button>
+        {previewClipKey === null && (
+          <button
+            type="button"
+            onClick={togglePlay}
+            className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
+            aria-label={playing ? "Pause" : "Play"}
+          >
+            {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+          </button>
+        )}
         <span className="font-mono">
           {formatMs((audioRef.current?.currentTime ?? 0) * 1000)} / {formatMs(totalMs)}
         </span>
