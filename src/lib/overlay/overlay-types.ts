@@ -1,10 +1,6 @@
-// src/lib/overlay/overlay-types.ts
-
-export type OverlayKind = "broll-video" | "audio-fx" | "text";
-
 export interface OverlayBase {
   id: string;
-  kind: OverlayKind;
+  kind: string;
   trackIndex: number;
   startMs: number;
   durationMs: number;
@@ -22,8 +18,7 @@ export interface BrollVideoOverlay extends OverlayBase {
   sourceDurationMs: number;
 }
 
-// Future kinds (defined here so the render switch stays exhaustive when added):
-// export interface AudioFxOverlay extends OverlayBase { kind: "audio-fx"; ... }
-// export interface TextOverlay   extends OverlayBase { kind: "text";      ... }
+// Future: add AudioFxOverlay (kind: "audio-fx") and TextOverlay (kind: "text") here and to OverlayItem union.
 
 export type OverlayItem = BrollVideoOverlay;
+export type OverlayKind = OverlayItem["kind"];
