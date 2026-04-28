@@ -27,7 +27,6 @@ export function PreviewPlayer() {
     setPlayheadMs,
     playerSeekRef,
     previewClipKey,
-    setPreviewClipKey,
   } = useBuildState();
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -230,13 +229,6 @@ export function PreviewPlayer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewClipKey]);
 
-  // Clear preview when timeline or audio is removed.
-  useEffect(() => {
-    if (!audioFile || !timeline) {
-      if (previewClipKey !== null) setPreviewClipKey(null);
-    }
-  }, [audioFile, timeline, previewClipKey, setPreviewClipKey]);
-
   function togglePlay() {
     const audio = audioRef.current;
     if (!audio) return;
@@ -252,17 +244,10 @@ export function PreviewPlayer() {
     }
   }
 
-  if (!audioFile) {
-    return (
-      <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
-        Set audio in the toolbar to begin.
-      </div>
-    );
-  }
-
   const totalMs = timeline?.reduce((s, x) => s + x.durationMs, 0) ?? 0;
   const playheadSection =
     timeline && selectedSectionIndex !== null ? timeline[selectedSectionIndex] : null;
+  const showTimeline = previewClipKey === null;
 
   return (
     <div className="h-full flex flex-col items-center justify-center gap-2 p-3">
@@ -270,12 +255,16 @@ export function PreviewPlayer() {
         className="bg-black rounded overflow-hidden flex items-center justify-center relative"
         style={{ aspectRatio: "4 / 5", height: "calc(100% - 48px)", maxWidth: "100%" }}
       >
+        {/* Timeline placeholder — shown when no audio and not in broll preview */}
+        {!audioFile && showTimeline && (
+          <span className="text-sm text-muted-foreground absolute">Set audio in the toolbar to begin.</span>
+        )}
         <video
           ref={videoRef}
           playsInline
           muted
           className="w-full h-full object-cover"
-          style={{ display: previewClipKey === null ? "block" : "none" }}
+          style={{ display: showTimeline ? "block" : "none" }}
         />
         <video
           ref={previewVideoRef}
@@ -286,22 +275,24 @@ export function PreviewPlayer() {
       </div>
       <audio ref={audioRef} src={audioUrl ?? undefined} preload="auto" />
 
-      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-        {previewClipKey === null && (
-          <button
-            type="button"
-            onClick={togglePlay}
-            className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
-            aria-label={playing ? "Pause" : "Play"}
-          >
-            {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-          </button>
-        )}
-        <span className="font-mono">
-          {formatMs((audioRef.current?.currentTime ?? 0) * 1000)} / {formatMs(totalMs)}
-        </span>
-        {playheadSection && <span>· [{playheadSection.tag}]</span>}
-      </div>
+      {audioFile && (
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          {showTimeline && (
+            <button
+              type="button"
+              onClick={togglePlay}
+              className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
+              aria-label={playing ? "Pause" : "Play"}
+            >
+              {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+            </button>
+          )}
+          <span className="font-mono">
+            {formatMs((audioRef.current?.currentTime ?? 0) * 1000)} / {formatMs(totalMs)}
+          </span>
+          {playheadSection && <span>· [{playheadSection.tag}]</span>}
+        </div>
+      )}
     </div>
   );
 }
