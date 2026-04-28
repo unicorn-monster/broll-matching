@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildSectionPlaybackPlan, buildFullTimelinePlaybackPlan, findClipAtMs, findSectionAtMs } from "../playback-plan";
+import { buildSectionPlaybackPlan, buildFullTimelinePlaybackPlan, findClipAtMs, findSectionAtMs, clipIdentityKey } from "../playback-plan";
 import type { MatchedSection } from "../auto-match";
 
 // First arg (clip duration) is informational only — MatchedClip carries
@@ -115,9 +115,9 @@ describe("buildFullTimelinePlaybackPlan", () => {
     ]);
     const plan = buildFullTimelinePlaybackPlan(timeline, "audio.mp3", urls);
     expect(plan.clips).toEqual([
-      { srcUrl: "blob:a", startMs: 0, endMs: 2000, speedFactor: 1 },
-      { srcUrl: "blob:b", startMs: 2000, endMs: 3500, speedFactor: 2 },
-      { srcUrl: "blob:c", startMs: 3500, endMs: 5000, speedFactor: 1.5 },
+      { srcUrl: "blob:a", startMs: 0, endMs: 2000, speedFactor: 1, indexeddbKey: "a" },
+      { srcUrl: "blob:b", startMs: 2000, endMs: 3500, speedFactor: 2, indexeddbKey: "b" },
+      { srcUrl: "blob:c", startMs: 3500, endMs: 5000, speedFactor: 1.5, indexeddbKey: "c" },
     ]);
   });
 
@@ -130,8 +130,8 @@ describe("buildFullTimelinePlaybackPlan", () => {
     const urls = new Map([["a", "blob:a"], ["b", "blob:b"]]);
     const plan = buildFullTimelinePlaybackPlan(timeline, "audio.mp3", urls);
     expect(plan.clips).toEqual([
-      { srcUrl: "blob:a", startMs: 0, endMs: 1000, speedFactor: 1 },
-      { srcUrl: "blob:b", startMs: 3000, endMs: 4000, speedFactor: 1 },
+      { srcUrl: "blob:a", startMs: 0, endMs: 1000, speedFactor: 1, indexeddbKey: "a" },
+      { srcUrl: "blob:b", startMs: 3000, endMs: 4000, speedFactor: 1, indexeddbKey: "b" },
     ]);
   });
 
@@ -144,8 +144,8 @@ describe("buildFullTimelinePlaybackPlan", () => {
     const urls = new Map([["a", "blob:a"], ["b", "blob:b"]]);
     const plan = buildFullTimelinePlaybackPlan(timeline, "audio.mp3", urls);
     expect(plan.clips).toEqual([
-      { srcUrl: "blob:a", startMs: 0, endMs: 1000, speedFactor: 1 },
-      { srcUrl: "blob:b", startMs: 3000, endMs: 4000, speedFactor: 1 },
+      { srcUrl: "blob:a", startMs: 0, endMs: 1000, speedFactor: 1, indexeddbKey: "a" },
+      { srcUrl: "blob:b", startMs: 3000, endMs: 4000, speedFactor: 1, indexeddbKey: "b" },
     ]);
   });
 });
@@ -194,5 +194,24 @@ describe("findSectionAtMs", () => {
 
   it("returns null on empty timeline", () => {
     expect(findSectionAtMs([], 0)).toBeNull();
+  });
+});
+
+describe("clipIdentityKey", () => {
+  it("returns indexeddbKey:startMs", () => {
+    const clip = { srcUrl: "blob:abc", startMs: 1500, endMs: 3000, speedFactor: 1, indexeddbKey: "k7" };
+    expect(clipIdentityKey(clip)).toBe("k7:1500");
+  });
+
+  it("differentiates same blob at different startMs (same clip used twice)", () => {
+    const a = { srcUrl: "blob:abc", startMs: 0, endMs: 1000, speedFactor: 1, indexeddbKey: "k1" };
+    const b = { srcUrl: "blob:abc", startMs: 4000, endMs: 5000, speedFactor: 1, indexeddbKey: "k1" };
+    expect(clipIdentityKey(a)).not.toBe(clipIdentityKey(b));
+  });
+
+  it("matches across plan rebuilds when key+startMs are equal", () => {
+    const a = { srcUrl: "blob:1", startMs: 2000, endMs: 4000, speedFactor: 1, indexeddbKey: "k3" };
+    const a2 = { srcUrl: "blob:2", startMs: 2000, endMs: 4000, speedFactor: 1.2, indexeddbKey: "k3" };
+    expect(clipIdentityKey(a)).toBe(clipIdentityKey(a2));
   });
 });

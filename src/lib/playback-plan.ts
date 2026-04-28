@@ -5,6 +5,11 @@ export interface PlaybackPlanClip {
   startMs: number;
   endMs: number;
   speedFactor: number;
+  indexeddbKey: string;
+}
+
+export function clipIdentityKey(clip: PlaybackPlanClip): string {
+  return `${clip.indexeddbKey}:${clip.startMs}`;
 }
 
 export interface PlaybackPlan {
@@ -58,7 +63,7 @@ export function buildSectionPlaybackPlan(
     // claimed even when nothing is emitted (player renders black for the gap).
     cursor = endMs;
     if (!url) continue;
-    clips.push({ srcUrl: url, startMs, endMs, speedFactor: c.speedFactor });
+    clips.push({ srcUrl: url, startMs, endMs, speedFactor: c.speedFactor, indexeddbKey: c.indexeddbKey });
   }
 
   return { clips, audioUrl, audioStartMs };
@@ -91,7 +96,7 @@ export function buildFullTimelinePlaybackPlan(
       cursor = endMs;
       const url = clipBlobUrls.get(c.indexeddbKey);
       if (!url) continue;
-      clips.push({ srcUrl: url, startMs, endMs, speedFactor: c.speedFactor });
+      clips.push({ srcUrl: url, startMs, endMs, speedFactor: c.speedFactor, indexeddbKey: c.indexeddbKey });
     }
   }
   return { clips, audioUrl, audioStartMs: 0 };
