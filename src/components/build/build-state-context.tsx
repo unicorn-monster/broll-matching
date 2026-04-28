@@ -41,6 +41,9 @@ interface BuildState {
 
   // Imperative seek handle — player registers on mount, timeline calls it.
   playerSeekRef: MutableRefObject<((ms: number) => void) | null>;
+  isPlaying: boolean;
+  setIsPlaying: (v: boolean) => void;
+  playerTogglePlayRef: MutableRefObject<(() => void) | null>;
 }
 
 const BuildStateContext = createContext<BuildState | null>(null);
@@ -59,7 +62,9 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [previewClipKey, setPreviewClipKey] = useState<string | null>(null);
 
+  const [isPlaying, setIsPlaying] = useState(false);
   const playerSeekRef = useRef<((ms: number) => void) | null>(null);
+  const playerTogglePlayRef = useRef<(() => void) | null>(null);
 
   function setAudio(file: File | null, duration: number | null) {
     setAudioFile(file);
@@ -112,6 +117,9 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
       inspectorMode,
       canExport,
       playerSeekRef,
+      isPlaying,
+      setIsPlaying,
+      playerTogglePlayRef,
     };
   }, [
     audioFile,
@@ -125,6 +133,7 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
     scriptDialogOpen,
     exportDialogOpen,
     previewClipKey,
+    isPlaying,
   ]);
 
   return <BuildStateContext.Provider value={value}>{children}</BuildStateContext.Provider>;

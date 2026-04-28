@@ -24,9 +24,13 @@ export function PreviewPlayer() {
     timeline,
     selectedSectionIndex,
     setSelectedSectionIndex,
+    playheadMs,
     setPlayheadMs,
     playerSeekRef,
     previewClipKey,
+    isPlaying,
+    setIsPlaying,
+    playerTogglePlayRef,
   } = useBuildState();
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -35,7 +39,6 @@ export function PreviewPlayer() {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [clipUrls, setClipUrls] = useState<Map<string, string>>(new Map());
   const clipUrlsRef = useRef<Map<string, string>>(new Map());
-  const [playing, setPlaying] = useState(false);
   const currentClipKeyRef = useRef<string | null>(null);
   const selectedSectionRef = useRef<number | null>(selectedSectionIndex);
   selectedSectionRef.current = selectedSectionIndex;
@@ -146,7 +149,7 @@ export function PreviewPlayer() {
   // rAF loop: drives playhead, swap detection, and section selection from
   // audio.currentTime while playing.
   useEffect(() => {
-    if (!playing || !plan || !timeline) return;
+    if (!isPlaying || !plan || !timeline) return;
     let raf = 0;
     const tick = () => {
       const audio = audioRef.current;
@@ -160,14 +163,14 @@ export function PreviewPlayer() {
         setSelectedSectionIndex(sectionIdx);
       }
       if (audio.ended) {
-        setPlaying(false);
+        setIsPlaying(false);
         return;
       }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing, plan, timeline, ensureClipLoaded, setPlayheadMs, setSelectedSectionIndex]);
+  }, [isPlaying, plan, timeline, ensureClipLoaded, setPlayheadMs, setSelectedSectionIndex]);
 
   // When user clicks a section in the timeline (sets selectedSectionIndex
   // directly, not via the rAF loop), seek the audio to that section's start.
@@ -247,11 +250,11 @@ export function PreviewPlayer() {
           ensureClipLoaded(audio.currentTime * 1000);
           void audio.play();
           void videoRef.current?.play();
-          setPlaying(true);
+          setIsPlaying(true);
         } else {
           audio.pause();
           videoRef.current?.pause();
-          setPlaying(false);
+          setIsPlaying(false);
         }
       }
     }
@@ -262,17 +265,21 @@ export function PreviewPlayer() {
   function togglePlay() {
     const audio = audioRef.current;
     if (!audio) return;
-    if (playing) {
+    if (isPlaying) {
       audio.pause();
       videoRef.current?.pause();
-      setPlaying(false);
+      setIsPlaying(false);
     } else {
       ensureClipLoaded(audio.currentTime * 1000);
       void audio.play();
       void videoRef.current?.play();
-      setPlaying(true);
+      setIsPlaying(true);
     }
   }
+
+  useEffect(() => {
+    playerTogglePlayRef.current = togglePlay;
+  });
 
   const totalMs = timeline?.reduce((s, x) => s + x.durationMs, 0) ?? 0;
   const playheadSection =
@@ -312,13 +319,13 @@ export function PreviewPlayer() {
               type="button"
               onClick={togglePlay}
               className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
-              aria-label={playing ? "Pause" : "Play"}
+              aria-label={isPlaying ? "Pause" : "Play"}
             >
-              {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+              {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
             </button>
           )}
           <span className="font-mono">
-            {formatMs((audioRef.current?.currentTime ?? 0) * 1000)} / {formatMs(totalMs)}
+            {formatMs(playheadMs)} / {formatMs(totalMs)}
           </span>
           {playheadSection && <span>· [{playheadSection.tag}]</span>}
         </div>

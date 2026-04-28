@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { Plus, Minus } from "lucide-react";
+import { Plus, Minus, Play, Pause } from "lucide-react";
 import { useBuildState } from "@/components/build/build-state-context";
+import { formatMs } from "@/lib/format-time";
 import { TimelineRuler } from "./timeline-ruler";
 import { TrackTags } from "./track-tags";
 import { TrackClips } from "./track-clips";
@@ -20,6 +21,8 @@ export function TimelinePanel() {
     setSelectedSectionIndex,
     playheadMs,
     playerSeekRef,
+    isPlaying,
+    playerTogglePlayRef,
   } = useBuildState();
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
@@ -66,7 +69,19 @@ export function TimelinePanel() {
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center gap-2 px-3 py-1 border-b border-border bg-muted/20 text-xs">
-        <span className="text-muted-foreground">Timeline</span>
+        {audioFile && (
+          <button
+            type="button"
+            onClick={() => playerTogglePlayRef.current?.()}
+            className="flex items-center justify-center w-6 h-6 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
+            aria-label={isPlaying ? "Pause" : "Play"}
+          >
+            {isPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+          </button>
+        )}
+        <span className="font-mono text-muted-foreground">
+          {formatMs(playheadMs)} / {formatMs(totalMs)}
+        </span>
         <div className="ml-auto flex items-center gap-1">
           <button onClick={() => zoom(0.8)} className="p-1 hover:bg-muted rounded" aria-label="Zoom out">
             <Minus className="w-3 h-3" />
