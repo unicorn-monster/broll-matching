@@ -8,8 +8,13 @@ import {
   buildFullTimelinePlaybackPlan,
   findClipAtMs,
   findSectionAtMs,
-  type PlaybackPlanClip,
+  clipIdentityKey,
 } from "@/lib/playback-plan";
+
+function setVideoSrcIfChanged(video: HTMLVideoElement, url: string) {
+  if (video.src === url || video.currentSrc === url) return;
+  video.src = url;
+}
 import { formatMs } from "@/lib/format-time";
 
 export function PreviewPlayer() {
@@ -28,7 +33,7 @@ export function PreviewPlayer() {
   const [clipUrls, setClipUrls] = useState<Map<string, string>>(new Map());
   const clipUrlsRef = useRef<Map<string, string>>(new Map());
   const [playing, setPlaying] = useState(false);
-  const currentClipRef = useRef<PlaybackPlanClip | null>(null);
+  const currentClipKeyRef = useRef<string | null>(null);
   const selectedSectionRef = useRef<number | null>(selectedSectionIndex);
   selectedSectionRef.current = selectedSectionIndex;
 
@@ -96,14 +101,15 @@ export function PreviewPlayer() {
       const video = videoRef.current;
       if (!video || !plan) return;
       const clip = findClipAtMs(plan.clips, audioMs);
-      if (currentClipRef.current === clip) return;
-      currentClipRef.current = clip;
+      const nextKey = clip ? clipIdentityKey(clip) : null;
+      if (currentClipKeyRef.current === nextKey) return;
+      currentClipKeyRef.current = nextKey;
       if (!clip) {
         video.removeAttribute("src");
         video.load();
         return;
       }
-      video.src = clip.srcUrl;
+      setVideoSrcIfChanged(video, clip.srcUrl);
       video.playbackRate = clip.speedFactor;
       const offsetSec = ((audioMs - clip.startMs) * clip.speedFactor) / 1000;
       const seekWhenReady = () => {
@@ -210,7 +216,7 @@ export function PreviewPlayer() {
     <div className="h-full flex flex-col items-center justify-center gap-2 p-3">
       <div
         className="bg-black rounded overflow-hidden flex items-center justify-center"
-        style={{ aspectRatio: "9 / 16", height: "calc(100% - 48px)", maxWidth: "100%" }}
+        style={{ aspectRatio: "4 / 5", height: "calc(100% - 48px)", maxWidth: "100%" }}
       >
         <video
           ref={videoRef}
