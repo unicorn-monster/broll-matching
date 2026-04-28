@@ -43,6 +43,10 @@ export function PreviewPlayer() {
   const selectedSectionRef = useRef<number | null>(selectedSectionIndex);
   selectedSectionRef.current = selectedSectionIndex;
 
+  const [brollPlaying, setBrollPlaying] = useState(false);
+  const [brollCurrentMs, setBrollCurrentMs] = useState(0);
+  const [brollDurationMs, setBrollDurationMs] = useState(0);
+
   // Audio object URL.
   useEffect(() => {
     if (!audioFile) {
@@ -191,6 +195,47 @@ export function PreviewPlayer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSectionIndex]);
 
+  // Sync broll preview video state into React so controls can render.
+  useEffect(() => {
+    const v = previewVideoRef.current;
+    if (!v) return;
+    function onTimeUpdate() {
+      if (v) setBrollCurrentMs(v.currentTime * 1000);
+    }
+    function onLoadedMetadata() {
+      if (v) setBrollDurationMs(v.duration * 1000);
+    }
+    function onPlay() {
+      setBrollPlaying(true);
+    }
+    function onPause() {
+      setBrollPlaying(false);
+    }
+    v.addEventListener("timeupdate", onTimeUpdate);
+    v.addEventListener("loadedmetadata", onLoadedMetadata);
+    v.addEventListener("play", onPlay);
+    v.addEventListener("pause", onPause);
+    v.addEventListener("ended", onPause);
+    return () => {
+      v.removeEventListener("timeupdate", onTimeUpdate);
+      v.removeEventListener("loadedmetadata", onLoadedMetadata);
+      v.removeEventListener("play", onPlay);
+      v.removeEventListener("pause", onPause);
+      v.removeEventListener("ended", onPause);
+    };
+  }, []);
+
+  function toggleBrollPlay() {
+    const v = previewVideoRef.current;
+    if (!v) return;
+    if (v.paused) {
+      if (v.ended || v.currentTime >= v.duration - 0.05) v.currentTime = 0;
+      void v.play();
+    } else {
+      v.pause();
+    }
+  }
+
   // Drive the preview <video> when previewClipKey is set: pause timeline,
   // load broll, auto-play once, stop at end frame.
   useEffect(() => {
@@ -306,30 +351,43 @@ export function PreviewPlayer() {
         <video
           ref={previewVideoRef}
           playsInline
+          data-broll-preview
           className="w-full h-full object-cover absolute inset-0"
           style={{ display: previewClipKey === null ? "none" : "block" }}
         />
       </div>
       <audio ref={audioRef} src={audioUrl ?? undefined} preload="auto" />
 
-      {audioFile && (
+      {previewClipKey !== null ? (
+        <div data-broll-preview className="flex items-center gap-3 text-xs text-muted-foreground">
+          <button
+            type="button"
+            onClick={toggleBrollPlay}
+            className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
+            aria-label={brollPlaying ? "Pause" : "Play"}
+          >
+            {brollPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+          </button>
+          <span className="font-mono">
+            {formatMs(brollCurrentMs)} / {formatMs(brollDurationMs)}
+          </span>
+        </div>
+      ) : audioFile ? (
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          {showTimeline && (
-            <button
-              type="button"
-              onClick={togglePlay}
-              className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
-              aria-label={isPlaying ? "Pause" : "Play"}
-            >
-              {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={togglePlay}
+            className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
+            aria-label={isPlaying ? "Pause" : "Play"}
+          >
+            {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+          </button>
           <span className="font-mono">
             {formatMs(playheadMs)} / {formatMs(totalMs)}
           </span>
           {playheadSection && <span>· [{playheadSection.tag}]</span>}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -37,6 +37,7 @@ export function EditorShell({ productId }: EditorShellProps) {
       const target = e.target as HTMLElement | null;
       if (!target) return;
       if (target.closest("[data-broll-thumbnail]")) return;
+      if (target.closest("[data-broll-preview]")) return;
       setPreviewClipKey(null);
     }
     document.addEventListener("mousedown", onMouseDown, true);
