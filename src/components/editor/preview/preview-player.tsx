@@ -220,7 +220,7 @@ export function PreviewPlayer() {
       if (previewVideo.src !== url && previewVideo.currentSrc !== url) {
         previewVideo.src = url;
       }
-      previewVideo.muted = false;
+      previewVideo.muted = true;
       previewVideo.playbackRate = 1;
       previewVideo.currentTime = 0;
       void previewVideo.play();
