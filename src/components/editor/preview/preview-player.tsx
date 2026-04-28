@@ -229,6 +229,36 @@ export function PreviewPlayer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewClipKey]);
 
+  // Space bar: play/pause for both timeline and broll preview mode.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.code !== "Space") return;
+      const target = e.target as HTMLElement;
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) return;
+      e.preventDefault();
+      if (previewClipKey !== null) {
+        const pv = previewVideoRef.current;
+        if (!pv) return;
+        pv.paused ? void pv.play() : pv.pause();
+      } else {
+        const audio = audioRef.current;
+        if (!audio) return;
+        if (audio.paused) {
+          ensureClipLoaded(audio.currentTime * 1000);
+          void audio.play();
+          void videoRef.current?.play();
+          setPlaying(true);
+        } else {
+          audio.pause();
+          videoRef.current?.pause();
+          setPlaying(false);
+        }
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [previewClipKey, ensureClipLoaded]);
+
   function togglePlay() {
     const audio = audioRef.current;
     if (!audio) return;
