@@ -217,7 +217,9 @@ export function markUsed(
 export function matchSections(
   sections: ParsedSection[],
   clipsByBaseName: Map<string, ClipMetadata[]>,
+  state?: MatchState,
 ): MatchedSection[] {
+  const s = state ?? createMatchState();
   return sections.map((section, sectionIndex) => {
     const warnings: string[] = [];
 
@@ -253,7 +255,7 @@ export function matchSections(
       };
     }
 
-    const clip = pickRandom(eligible);
+    const clip = pickFromState(s, key, candidates, eligible);
     return {
       sectionIndex,
       tag: section.tag,
