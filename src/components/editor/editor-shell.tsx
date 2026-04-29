@@ -14,6 +14,7 @@ import { ExportDialog } from "./dialogs/export-dialog";
 import { LibraryPanel } from "./library/library-panel";
 import { TimelinePanel } from "./timeline/timeline-panel";
 import { PreviewPlayer } from "./preview/preview-player";
+import { OverlayDragProvider } from "./overlay/overlay-drag-context";
 
 interface EditorShellProps {
   productId: string;
@@ -45,6 +46,7 @@ export function EditorShell({ productId }: EditorShellProps) {
   }, [previewClipKey, setPreviewClipKey]);
 
   return (
+    <OverlayDragProvider>
     <div
       className="grid h-[calc(100vh-4rem)] w-full bg-background text-foreground"
       style={{
@@ -85,5 +87,6 @@ export function EditorShell({ productId }: EditorShellProps) {
       <ScriptDialog open={scriptDialogOpen} onOpenChange={setScriptDialogOpen} productId={productId} />
       <ExportDialog open={exportDialogOpen} onOpenChange={setExportDialogOpen} />
     </div>
+    </OverlayDragProvider>
   );
 }
