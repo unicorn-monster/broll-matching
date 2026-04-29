@@ -15,6 +15,7 @@ import { LibraryPanel } from "./library/library-panel";
 import { TimelinePanel } from "./timeline/timeline-panel";
 import { PreviewPlayer } from "./preview/preview-player";
 import { OverlayDragProvider } from "./overlay/overlay-drag-context";
+import { OverlayInspector } from "./overlay/overlay-inspector";
 
 interface EditorShellProps {
   productId: string;
@@ -30,6 +31,8 @@ export function EditorShell({ productId }: EditorShellProps) {
     setExportDialogOpen,
     previewClipKey,
     setPreviewClipKey,
+    inspectorMode,
+    selectedOverlayId,
   } = useBuildState();
 
   useEffect(() => {
@@ -76,8 +79,14 @@ export function EditorShell({ productId }: EditorShellProps) {
       <div className="row-start-2 col-start-2 overflow-hidden bg-black/30">
         <PreviewPlayer />
       </div>
-      <div className="row-start-2 col-start-3 border-l border-border overflow-hidden flex items-center justify-center bg-muted/10 text-xs text-muted-foreground">
-        Coming soon
+      <div className="row-start-2 col-start-3 border-l border-border overflow-hidden bg-muted/10">
+        {inspectorMode === "overlay" && selectedOverlayId ? (
+          <OverlayInspector overlayId={selectedOverlayId} />
+        ) : (
+          <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
+            Coming soon
+          </div>
+        )}
       </div>
       <div className="col-span-3 row-start-3 border-t border-border overflow-hidden">
         <TimelinePanel />
