@@ -9,11 +9,13 @@ import { TrackTags } from "./track-tags";
 import { TrackClips } from "./track-clips";
 import { TrackAudio } from "./track-audio";
 import { OverlayTracks } from "../overlay/overlay-tracks";
+import { useAudioKeyboard } from "../audio/use-audio-keyboard";
 
 const MIN_PX_PER_SEC = 5;
 const MAX_PX_PER_SEC = 200;
 
 export function TimelinePanel() {
+  useAudioKeyboard();
   const {
     timeline,
     audioFile,
@@ -24,16 +26,24 @@ export function TimelinePanel() {
     playerSeekRef,
     isPlaying,
     playerTogglePlayRef,
+    overlays,
+    setAudioSelected,
   } = useBuildState();
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const [pxPerSec, setPxPerSec] = useState<number | null>(null);
 
+  const overlaysMaxMs = useMemo(
+    () => overlays.reduce((m, o) => Math.max(m, o.startMs + o.durationMs), 0),
+    [overlays],
+  );
+
   const totalMs = useMemo(() => {
-    if (timeline) return timeline.reduce((sum, s) => sum + s.durationMs, 0);
-    if (audioDuration) return audioDuration * 1000;
-    return 0;
-  }, [timeline, audioDuration]);
+    let t = 0;
+    if (timeline) t = timeline.reduce((sum, s) => sum + s.durationMs, 0);
+    else if (audioDuration) t = audioDuration * 1000;
+    return Math.max(t, overlaysMaxMs);
+  }, [timeline, audioDuration, overlaysMaxMs]);
 
   const effectivePxPerSec = pxPerSec ?? (() => {
     if (totalMs <= 0) return 30;
@@ -48,19 +58,14 @@ export function TimelinePanel() {
     });
   }
 
-  if (!audioFile) {
-    return (
-      <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
-        Set audio in the toolbar to begin.
-      </div>
-    );
-  }
-
   const playheadLeft = (playheadMs / 1000) * effectivePxPerSec;
-  const totalWidthPx = (totalMs / 1000) * effectivePxPerSec;
+  const renderMs = totalMs > 0 ? totalMs : 60_000;
+  const totalWidthPx = (renderMs / 1000) * effectivePxPerSec;
 
   function handleScrubClick(e: React.MouseEvent<HTMLDivElement>) {
-    if ((e.target as HTMLElement).closest("button,[data-clip-block]")) return;
+    const target = e.target as HTMLElement;
+    if (target.closest("button,[data-clip-block],[data-overlay-block],[data-audio-block]")) return;
+    setAudioSelected(false);
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const ms = (x / effectivePxPerSec) * 1000;
@@ -99,7 +104,7 @@ export function TimelinePanel() {
           className="relative cursor-pointer"
           onClick={handleScrubClick}
         >
-          <TimelineRuler totalMs={totalMs} pxPerSecond={effectivePxPerSec} />
+          <TimelineRuler totalMs={renderMs} pxPerSecond={effectivePxPerSec} />
           {timeline ? (
             <>
               <TrackTags
@@ -108,6 +113,7 @@ export function TimelinePanel() {
                 selectedIndex={selectedSectionIndex}
                 onSelect={setSelectedSectionIndex}
               />
+              <OverlayTracks pxPerSecond={effectivePxPerSec} />
               <TrackClips
                 timeline={timeline}
                 pxPerSecond={effectivePxPerSec}
@@ -120,8 +126,13 @@ export function TimelinePanel() {
               Paste script in the toolbar to populate sections.
             </div>
           )}
-          <OverlayTracks pxPerSecond={effectivePxPerSec} />
-          <TrackAudio audioFile={audioFile} audioDuration={audioDuration} pxPerSecond={effectivePxPerSec} />
+          {audioFile ? (
+            <TrackAudio audioFile={audioFile} audioDuration={audioDuration} pxPerSecond={effectivePxPerSec} />
+          ) : (
+            <div className="h-[56px] flex items-center px-3 text-xs text-muted-foreground bg-muted/10">
+              No audio loaded
+            </div>
+          )}
 
           <div
             className="pointer-events-none absolute top-0 bottom-0 w-px bg-orange-400 shadow-[0_0_4px_rgba(251,146,60,0.8)]"
