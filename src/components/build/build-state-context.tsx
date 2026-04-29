@@ -37,9 +37,11 @@ interface BuildState {
   setOverlays: (next: OverlayItem[] | ((prev: OverlayItem[]) => OverlayItem[])) => void;
   selectedOverlayId: string | null;
   setSelectedOverlayId: (id: string | null) => void;
+  audioSelected: boolean;
+  setAudioSelected: (v: boolean) => void;
 
   // Derived
-  inspectorMode: "section" | "overlay" | "empty";
+  inspectorMode: "section" | "overlay" | "audio" | "empty";
   canExport: boolean;
 
   // Broll click-to-preview state.
@@ -75,6 +77,7 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
 
   const [overlays, setOverlaysState] = useState<OverlayItem[]>([]);
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
+  const [audioSelected, setAudioSelected] = useState(false);
   const setOverlays = useCallback(
     (next: OverlayItem[] | ((prev: OverlayItem[]) => OverlayItem[])) => {
       setOverlaysState((prev) =>
@@ -102,12 +105,14 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
   }
 
   const value = useMemo<BuildState>(() => {
-    const inspectorMode: "section" | "overlay" | "empty" =
+    const inspectorMode: "section" | "overlay" | "audio" | "empty" =
       selectedOverlayId !== null
         ? "overlay"
-        : selectedSectionIndex !== null && timeline
-          ? "section"
-          : "empty";
+        : audioSelected
+          ? "audio"
+          : selectedSectionIndex !== null && timeline
+            ? "section"
+            : "empty";
     const canExport =
       !!audioFile &&
       !!timeline &&
@@ -140,6 +145,8 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
       setOverlays,
       selectedOverlayId,
       setSelectedOverlayId,
+      audioSelected,
+      setAudioSelected,
       inspectorMode,
       canExport,
       playerSeekRef,
@@ -162,6 +169,7 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
     isPlaying,
     overlays,
     selectedOverlayId,
+    audioSelected,
   ]);
 
   return <BuildStateContext.Provider value={value}>{children}</BuildStateContext.Provider>;

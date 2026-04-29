@@ -16,6 +16,7 @@ import { TimelinePanel } from "./timeline/timeline-panel";
 import { PreviewPlayer } from "./preview/preview-player";
 import { OverlayDragProvider } from "./overlay/overlay-drag-context";
 import { OverlayInspector } from "./overlay/overlay-inspector";
+import { AudioInspector } from "./audio/audio-inspector";
 
 interface EditorShellProps {
   productId: string;
@@ -82,6 +83,8 @@ export function EditorShell({ productId }: EditorShellProps) {
       <div className="row-start-2 col-start-3 border-l border-border overflow-hidden bg-muted/10">
         {inspectorMode === "overlay" && selectedOverlayId ? (
           <OverlayInspector overlayId={selectedOverlayId} />
+        ) : inspectorMode === "audio" ? (
+          <AudioInspector />
         ) : (
           <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
             Coming soon

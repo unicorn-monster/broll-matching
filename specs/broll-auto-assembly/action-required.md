@@ -24,3 +24,4 @@ Manual steps that must be completed by a human. These cannot be automated.
 ---
 
 > **Note:** These tasks are also listed in context within `implementation-plan.md`
+

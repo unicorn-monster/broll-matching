@@ -100,7 +100,7 @@ export function ScriptDialog({ open, onOpenChange, productId }: ScriptDialogProp
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="!max-w-2xl overflow-hidden">
         <DialogHeader>
           <DialogTitle>Script</DialogTitle>
           <DialogDescription>
