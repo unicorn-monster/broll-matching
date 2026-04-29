@@ -135,6 +135,85 @@ function singleClipMatch(clip: ClipMetadata, sectionMs: number): MatchedClip {
   return { clipId: clip.id, indexeddbKey: clip.indexeddbKey, speedFactor, isPlaceholder: false };
 }
 
+function shuffle<T>(arr: T[], rng: () => number): T[] {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [arr[i], arr[j]] = [arr[j]!, arr[i]!];
+  }
+  return arr;
+}
+
+interface QueueState {
+  remaining: ClipMetadata[];
+  lastUsed: ClipMetadata | null;
+  fullPool: ClipMetadata[];
+}
+
+export interface MatchState {
+  queues: Map<string, QueueState>;
+  rng: () => number;
+}
+
+export function createMatchState(rng: () => number = Math.random): MatchState {
+  return { queues: new Map(), rng };
+}
+
+function ensureQueue(state: MatchState, tagKey: string, fullPool: ClipMetadata[]): QueueState {
+  let q = state.queues.get(tagKey);
+  if (!q) {
+    q = { remaining: shuffle([...fullPool], state.rng), lastUsed: null, fullPool };
+    state.queues.set(tagKey, q);
+  }
+  return q;
+}
+
+function pickFromState(
+  state: MatchState,
+  tagKey: string,
+  fullPool: ClipMetadata[],
+  eligible: ClipMetadata[],
+): ClipMetadata {
+  const q = ensureQueue(state, tagKey, fullPool);
+  const eligibleSet = new Set(eligible);
+
+  for (let i = 0; i < q.remaining.length; i++) {
+    if (eligibleSet.has(q.remaining[i]!)) {
+      const picked = q.remaining.splice(i, 1)[0]!;
+      q.lastUsed = picked;
+      return picked;
+    }
+  }
+
+  q.remaining = shuffle([...fullPool], state.rng);
+  if (q.lastUsed && q.remaining.length >= 2 && q.remaining[0] === q.lastUsed) {
+    [q.remaining[0], q.remaining[1]] = [q.remaining[1]!, q.remaining[0]!];
+  }
+  for (let i = 0; i < q.remaining.length; i++) {
+    if (eligibleSet.has(q.remaining[i]!)) {
+      const picked = q.remaining.splice(i, 1)[0]!;
+      q.lastUsed = picked;
+      return picked;
+    }
+  }
+
+  const picked = eligible[Math.floor(state.rng() * eligible.length)]!;
+  q.lastUsed = picked;
+  return picked;
+}
+
+export function markUsed(
+  state: MatchState,
+  tagKey: string,
+  fullPool: ClipMetadata[],
+  clipId: string,
+): void {
+  const q = ensureQueue(state, tagKey, fullPool);
+  const idx = q.remaining.findIndex((c) => c.id === clipId);
+  if (idx >= 0) q.remaining.splice(idx, 1);
+  const clip = fullPool.find((c) => c.id === clipId);
+  if (clip) q.lastUsed = clip;
+}
+
 export function matchSections(
   sections: ParsedSection[],
   clipsByBaseName: Map<string, ClipMetadata[]>,
@@ -160,44 +239,11 @@ export function matchSections(
       };
     }
 
-    // Case 1: at least one clip is long enough — speedup if natural ratio <= MAX_AUTO_SPEEDUP,
-    // otherwise trim a longer clip down to section length and play at 1x.
-    const longEnough = candidates.filter((c) => c.durationMs >= section.durationMs);
-    if (longEnough.length > 0) {
-      const speedupOk = longEnough.filter(
-        (c) => c.durationMs / section.durationMs <= MAX_AUTO_SPEEDUP,
-      );
-      if (speedupOk.length > 0) {
-        const clip = pickRandom(speedupOk);
-        return {
-          sectionIndex,
-          tag: section.tag,
-          durationMs: section.durationMs,
-          clips: [singleClipMatch(clip, section.durationMs)],
-          warnings,
-        };
-      }
-      // Trim fallback: speedFactor stays 1, source is cut to section length.
-      const clip = pickRandom(longEnough);
-      return {
-        sectionIndex,
-        tag: section.tag,
-        durationMs: section.durationMs,
-        clips: [{
-          clipId: clip.id,
-          indexeddbKey: clip.indexeddbKey,
-          speedFactor: 1,
-          trimDurationMs: section.durationMs,
-          isPlaceholder: false,
-        }],
-        warnings,
-      };
-    }
-
-    // Case 2: no single clip fits the section — pick exactly CHAIN_PAIR_SIZE distinct
-    // candidates and adjust the shared speedFactor to fit. No cap, no floor.
-    if (candidates.length < CHAIN_PAIR_SIZE) {
-      warnings.push(`Need ≥${CHAIN_PAIR_SIZE} variants for chain mode (tag: ${section.tag})`);
+    // Trim-only: pick any clip with durationMs >= section.durationMs and trim from the start.
+    // No speedup, no slowdown, no chaining — short clips are skipped to avoid distortion.
+    const eligible = candidates.filter((c) => c.durationMs >= section.durationMs);
+    if (eligible.length === 0) {
+      warnings.push(`No B-roll long enough for tag: ${section.tag} (need ≥${section.durationMs}ms)`);
       return {
         sectionIndex,
         tag: section.tag,
@@ -207,17 +253,18 @@ export function matchSections(
       };
     }
 
-    const [clipA, clipB] = pickTwoDistinct(candidates);
-    const totalMs = clipA.durationMs + clipB.durationMs;
-    const speedFactor = totalMs / section.durationMs;
+    const clip = pickRandom(eligible);
     return {
       sectionIndex,
       tag: section.tag,
       durationMs: section.durationMs,
-      clips: [
-        { clipId: clipA.id, indexeddbKey: clipA.indexeddbKey, speedFactor, isPlaceholder: false },
-        { clipId: clipB.id, indexeddbKey: clipB.indexeddbKey, speedFactor, isPlaceholder: false },
-      ],
+      clips: [{
+        clipId: clip.id,
+        indexeddbKey: clip.indexeddbKey,
+        speedFactor: 1,
+        trimDurationMs: section.durationMs,
+        isPlaceholder: false,
+      }],
       warnings,
     };
   });
