@@ -8,6 +8,7 @@ import { TimelineRuler } from "./timeline-ruler";
 import { TrackTags } from "./track-tags";
 import { TrackClips } from "./track-clips";
 import { TrackAudio } from "./track-audio";
+import { OverlayTracks } from "../overlay/overlay-tracks";
 
 const MIN_PX_PER_SEC = 5;
 const MAX_PX_PER_SEC = 200;
@@ -119,6 +120,7 @@ export function TimelinePanel() {
               Paste script in the toolbar to populate sections.
             </div>
           )}
+          <OverlayTracks pxPerSecond={effectivePxPerSec} />
           <TrackAudio audioFile={audioFile} audioDuration={audioDuration} pxPerSecond={effectivePxPerSec} />
 
           <div
