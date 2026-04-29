@@ -10,6 +10,7 @@ import {
   findSectionAtMs,
   clipIdentityKey,
 } from "@/lib/playback-plan";
+import { findActiveOverlays, findTopmostActive, computeFadedVolume } from "@/lib/overlay/overlay-render-plan";
 
 import { formatMs } from "@/lib/format-time";
 
@@ -31,10 +32,12 @@ export function PreviewPlayer() {
     isPlaying,
     setIsPlaying,
     playerTogglePlayRef,
+    overlays,
   } = useBuildState();
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
+  const overlayVideoRefs = useRef<Map<string, HTMLVideoElement | null>>(new Map());
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [clipUrls, setClipUrls] = useState<Map<string, string>>(new Map());
@@ -67,23 +70,33 @@ export function PreviewPlayer() {
     };
   }, []);
 
-  // Eager pre-fetch every real clip the moment timeline is set so playback
-  // never stalls on an IndexedDB read mid-scrub.
+  // Eager pre-fetch every real clip the moment timeline or overlays change so
+  // playback never stalls on an IndexedDB read mid-scrub.
   useEffect(() => {
-    if (!timeline) return;
     let cancelled = false;
     (async () => {
       const additions = new Map<string, string>();
-      for (const section of timeline) {
-        for (const c of section.clips) {
-          if (c.isPlaceholder) continue;
-          if (clipUrlsRef.current.has(c.indexeddbKey)) continue;
-          const buf = await getClip(c.indexeddbKey);
-          if (cancelled || !buf) continue;
-          const url = URL.createObjectURL(new Blob([buf], { type: "video/mp4" }));
-          clipUrlsRef.current.set(c.indexeddbKey, url);
-          additions.set(c.indexeddbKey, url);
+      if (timeline) {
+        for (const section of timeline) {
+          for (const c of section.clips) {
+            if (c.isPlaceholder) continue;
+            if (clipUrlsRef.current.has(c.indexeddbKey)) continue;
+            const buf = await getClip(c.indexeddbKey);
+            if (cancelled || !buf) continue;
+            const url = URL.createObjectURL(new Blob([buf], { type: "video/mp4" }));
+            clipUrlsRef.current.set(c.indexeddbKey, url);
+            additions.set(c.indexeddbKey, url);
+          }
         }
+      }
+      for (const o of overlays) {
+        if (o.kind !== "broll-video") continue;
+        if (clipUrlsRef.current.has(o.indexeddbKey)) continue;
+        const buf = await getClip(o.indexeddbKey);
+        if (cancelled || !buf) continue;
+        const url = URL.createObjectURL(new Blob([buf], { type: "video/mp4" }));
+        clipUrlsRef.current.set(o.indexeddbKey, url);
+        additions.set(o.indexeddbKey, url);
       }
       if (!cancelled && additions.size > 0) {
         setClipUrls((prev) => {
@@ -96,7 +109,7 @@ export function PreviewPlayer() {
     return () => {
       cancelled = true;
     };
-  }, [timeline]);
+  }, [timeline, overlays]);
 
   const plan = useMemo(() => {
     if (!timeline || !audioUrl) return null;
@@ -136,6 +149,51 @@ export function PreviewPlayer() {
     [plan],
   );
 
+  const ensureOverlaysLoaded = useCallback(
+    (audioMs: number) => {
+      const audio = audioRef.current;
+      const audioPlaying = audio !== null && !audio.paused;
+
+      const active = findActiveOverlays(overlays, audioMs);
+      const topmost = findTopmostActive(overlays, audioMs);
+      const activeIds = new Set(active.map((o) => o.id));
+
+      for (const o of overlays) {
+        const el = overlayVideoRefs.current.get(o.id);
+        if (!el) continue;
+
+        if (!activeIds.has(o.id)) {
+          if (!el.paused) el.pause();
+          el.style.display = "none";
+          continue;
+        }
+
+        if (o.kind !== "broll-video") continue;
+
+        const url = clipUrlsRef.current.get(o.indexeddbKey);
+        if (!url) continue;
+        if (el.src !== url && el.currentSrc !== url) el.src = url;
+
+        const targetSec = (audioMs - o.startMs + o.sourceStartMs) / 1000;
+        if (Math.abs(el.currentTime - targetSec) > 0.1) {
+          try {
+            el.currentTime = Math.max(0, targetSec);
+          } catch {
+            // metadata not ready yet
+          }
+        }
+
+        el.volume = computeFadedVolume(o, audioMs);
+        el.muted = o.muted;
+        el.style.display = topmost && o.id === topmost.id ? "block" : "none";
+
+        if (audioPlaying && el.paused) void el.play();
+        else if (!audioPlaying && !el.paused) el.pause();
+      }
+    },
+    [overlays],
+  );
+
   // Register seek dispatcher for the timeline.
   useEffect(() => {
     playerSeekRef.current = (ms: number) => {
@@ -144,16 +202,17 @@ export function PreviewPlayer() {
       audio.currentTime = Math.max(0, ms / 1000);
       setPlayheadMs(ms);
       ensureClipLoaded(ms);
+      ensureOverlaysLoaded(ms);
     };
     return () => {
       playerSeekRef.current = null;
     };
-  }, [ensureClipLoaded, playerSeekRef, setPlayheadMs]);
+  }, [ensureClipLoaded, ensureOverlaysLoaded, playerSeekRef, setPlayheadMs]);
 
   // rAF loop: drives playhead, swap detection, and section selection from
   // audio.currentTime while playing.
   useEffect(() => {
-    if (!isPlaying || !plan || !timeline) return;
+    if (!isPlaying) return;
     let raf = 0;
     const tick = () => {
       const audio = audioRef.current;
@@ -161,10 +220,13 @@ export function PreviewPlayer() {
       const audioMs = audio.currentTime * 1000;
       setPlayheadMs(audioMs);
       ensureClipLoaded(audioMs);
-      const sectionIdx = findSectionAtMs(timeline, audioMs);
-      if (sectionIdx !== null && sectionIdx !== selectedSectionRef.current) {
-        selectedSectionRef.current = sectionIdx;
-        setSelectedSectionIndex(sectionIdx);
+      ensureOverlaysLoaded(audioMs);
+      if (timeline) {
+        const sectionIdx = findSectionAtMs(timeline, audioMs);
+        if (sectionIdx !== null && sectionIdx !== selectedSectionRef.current) {
+          selectedSectionRef.current = sectionIdx;
+          setSelectedSectionIndex(sectionIdx);
+        }
       }
       if (audio.ended) {
         setIsPlaying(false);
@@ -174,7 +236,7 @@ export function PreviewPlayer() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [isPlaying, plan, timeline, ensureClipLoaded, setPlayheadMs, setSelectedSectionIndex]);
+  }, [isPlaying, plan, timeline, ensureClipLoaded, ensureOverlaysLoaded, setPlayheadMs, setSelectedSectionIndex]);
 
   // When user clicks a section in the timeline (sets selectedSectionIndex
   // directly, not via the rAF loop), seek the audio to that section's start.
@@ -191,6 +253,7 @@ export function PreviewPlayer() {
       audio.currentTime = cursor / 1000;
       setPlayheadMs(cursor);
       ensureClipLoaded(cursor);
+      ensureOverlaysLoaded(cursor);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSectionIndex]);
@@ -355,6 +418,17 @@ export function PreviewPlayer() {
           className="w-full h-full object-cover absolute inset-0"
           style={{ display: previewClipKey === null ? "none" : "block" }}
         />
+        {overlays.map((o) => (
+          <video
+            key={o.id}
+            ref={(el) => {
+              overlayVideoRefs.current.set(o.id, el);
+            }}
+            playsInline
+            className="absolute inset-0 w-full h-full object-cover"
+            style={{ zIndex: o.trackIndex + 10, display: "none" }}
+          />
+        ))}
       </div>
       <audio ref={audioRef} src={audioUrl ?? undefined} preload="auto" />
 
