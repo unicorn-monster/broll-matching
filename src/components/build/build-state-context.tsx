@@ -1,10 +1,11 @@
 // src/components/build/build-state-context.tsx
 "use client";
 
-import { createContext, useContext, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
 import type { MutableRefObject } from "react";
 import type { MatchedSection } from "@/lib/auto-match";
 import type { ParsedSection } from "@/lib/script-parser";
+import type { OverlayItem } from "@/lib/overlay/overlay-types";
 
 interface BuildState {
   // Project inputs
@@ -31,8 +32,14 @@ interface BuildState {
   exportDialogOpen: boolean;
   setExportDialogOpen: (open: boolean) => void;
 
+  // Overlay tracks (free-form clips above main track)
+  overlays: OverlayItem[];
+  setOverlays: (next: OverlayItem[] | ((prev: OverlayItem[]) => OverlayItem[])) => void;
+  selectedOverlayId: string | null;
+  setSelectedOverlayId: (id: string | null) => void;
+
   // Derived
-  inspectorMode: "section" | "empty";
+  inspectorMode: "section" | "overlay" | "empty";
   canExport: boolean;
 
   // Broll click-to-preview state.
@@ -66,6 +73,17 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
   const playerSeekRef = useRef<((ms: number) => void) | null>(null);
   const playerTogglePlayRef = useRef<(() => void) | null>(null);
 
+  const [overlays, setOverlaysState] = useState<OverlayItem[]>([]);
+  const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
+  const setOverlays = useCallback(
+    (next: OverlayItem[] | ((prev: OverlayItem[]) => OverlayItem[])) => {
+      setOverlaysState((prev) =>
+        typeof next === "function" ? (next as (p: OverlayItem[]) => OverlayItem[])(prev) : next,
+      );
+    },
+    [],
+  );
+
   function setAudio(file: File | null, duration: number | null) {
     setAudioFile(file);
     setAudioDuration(duration);
@@ -84,8 +102,12 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
   }
 
   const value = useMemo<BuildState>(() => {
-    const inspectorMode: "section" | "empty" =
-      selectedSectionIndex !== null && timeline ? "section" : "empty";
+    const inspectorMode: "section" | "overlay" | "empty" =
+      selectedOverlayId !== null
+        ? "overlay"
+        : selectedSectionIndex !== null && timeline
+          ? "section"
+          : "empty";
     const canExport =
       !!audioFile &&
       !!timeline &&
@@ -114,6 +136,10 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
       setExportDialogOpen,
       previewClipKey,
       setPreviewClipKey,
+      overlays,
+      setOverlays,
+      selectedOverlayId,
+      setSelectedOverlayId,
       inspectorMode,
       canExport,
       playerSeekRef,
@@ -134,6 +160,8 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
     exportDialogOpen,
     previewClipKey,
     isPlaying,
+    overlays,
+    selectedOverlayId,
   ]);
 
   return <BuildStateContext.Provider value={value}>{children}</BuildStateContext.Provider>;
