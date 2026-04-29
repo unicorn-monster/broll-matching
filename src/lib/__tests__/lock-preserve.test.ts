@@ -170,3 +170,34 @@ describe("preserveLocks", () => {
     expect(result.droppedCount).toBe(1);
   });
 });
+
+describe("preserveLocks — neighbor avoidance with locks", () => {
+  it("locked clip prevents adjacent unlocked auto-match from picking the same clip", () => {
+    const c1 = makeClip("hook-01", "hook-01", 8000);
+    const c2 = makeClip("hook-02", "hook-02", 8000);
+    const map = new Map([["hook", [c1, c2]]]);
+    const oldTimeline: MatchedSection[] = [
+      makeMatched("hook", 3000, ["hook-01"], true),
+    ];
+    const newSections = [makeParsed("hook", 3000), makeParsed("hook", 3000)];
+    for (let trial = 0; trial < 200; trial++) {
+      const { newTimeline } = preserveLocks(oldTimeline, newSections, map);
+      expect(newTimeline[0]!.clips[0]!.clipId).toBe("hook-01");
+      expect(newTimeline[1]!.clips[0]!.clipId).toBe("hook-02");
+    }
+  });
+
+  it("when no locks match, auto-match across sections still avoids back-to-back", () => {
+    const c1 = makeClip("hook-01", "hook-01", 8000);
+    const c2 = makeClip("hook-02", "hook-02", 8000);
+    const c3 = makeClip("hook-03", "hook-03", 8000);
+    const map = new Map([["hook", [c1, c2, c3]]]);
+    const newSections = Array.from({ length: 4 }, () => makeParsed("hook", 3000));
+    for (let trial = 0; trial < 100; trial++) {
+      const { newTimeline } = preserveLocks([], newSections, map);
+      for (let i = 1; i < newTimeline.length; i++) {
+        expect(newTimeline[i]!.clips[0]!.clipId).not.toBe(newTimeline[i - 1]!.clips[0]!.clipId);
+      }
+    }
+  });
+});
