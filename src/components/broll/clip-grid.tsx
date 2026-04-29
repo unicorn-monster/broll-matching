@@ -9,6 +9,7 @@ import { deriveBaseName, isValidBrollName } from "@/lib/broll";
 import { formatMs } from "@/lib/format-time";
 import { ClipUpload } from "./clip-upload";
 import { useBuildState } from "@/components/build/build-state-context";
+import { useOverlayDragSource } from "@/components/editor/overlay/overlay-drag-source";
 
 type Clip = {
   id: string; brollName: string; filename: string;
@@ -34,6 +35,74 @@ function ThumbnailImage({ clipId }: { clipId: string }) {
   return src
     ? <img src={src} alt="" className="w-full h-full object-cover" />
     : <div className="w-full h-full bg-muted flex items-center justify-center text-xs text-muted-foreground">No preview</div>;
+}
+
+interface ClipTileProps {
+  clip: Clip;
+  onPreview: (key: string) => void;
+  onEdit: (id: string, name: string) => void;
+  onDelete: (clip: Clip) => void;
+  editingId: string | null;
+  editName: string;
+  setEditName: (n: string) => void;
+  onRename: (clip: Clip) => void;
+  onCancelEdit: () => void;
+}
+
+function ClipTile({ clip, onPreview, onEdit, onDelete, editingId, editName, setEditName, onRename, onCancelEdit }: ClipTileProps) {
+  const dragProps = useOverlayDragSource({
+    clipId: clip.id,
+    indexeddbKey: clip.indexeddbKey,
+    durationMs: clip.durationMs,
+    thumbnailUrl: null,
+  });
+  return (
+    <div
+      key={clip.id}
+      data-broll-thumbnail
+      {...dragProps}
+      onClick={() => onPreview(clip.indexeddbKey)}
+      className="group relative border border-border rounded-lg overflow-hidden bg-muted/20 cursor-pointer"
+    >
+      <div className="aspect-[4/5] relative">
+        <ThumbnailImage clipId={clip.indexeddbKey} />
+        <div className="absolute bottom-1 right-1 bg-black/60 text-white text-xs px-1 rounded">
+          {formatMs(clip.durationMs)}
+        </div>
+      </div>
+      <div className="p-1.5">
+        {editingId === clip.id ? (
+          <div className="flex gap-1">
+            <Input
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") onRename(clip);
+                if (e.key === "Escape") onCancelEdit();
+              }}
+              autoFocus
+              className="h-6 text-xs"
+            />
+            <button onClick={(e) => { e.stopPropagation(); onRename(clip); }} className="text-xs text-green-600">✓</button>
+          </div>
+        ) : (
+          <p className="text-xs truncate font-mono">{clip.brollName}</p>
+        )}
+      </div>
+      <div className="absolute top-1 right-1 hidden group-hover:flex gap-1 bg-black/60 rounded p-0.5">
+        <button
+          onClick={(e) => { e.stopPropagation(); onEdit(clip.id, clip.brollName); }}
+          className="text-white hover:text-yellow-300"
+        >
+          <Pencil className="w-3 h-3" />
+        </button>
+        <button onClick={(e) => { e.stopPropagation(); onDelete(clip); }} className="text-white hover:text-red-400">
+          <Trash2 className="w-3 h-3" />
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export function ClipGrid({ clips, productId, activeFolderId, onClipsChanged, fileQuery, onFileQueryChange }: ClipGridProps) {
@@ -141,50 +210,18 @@ export function ClipGrid({ clips, productId, activeFolderId, onClipsChanged, fil
           </h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
             {groupClips.map((clip) => (
-              <div
+              <ClipTile
                 key={clip.id}
-                data-broll-thumbnail
-                onClick={() => setPreviewClipKey(clip.indexeddbKey)}
-                className="group relative border border-border rounded-lg overflow-hidden bg-muted/20 cursor-pointer"
-              >
-                <div className="aspect-[4/5] relative">
-                  <ThumbnailImage clipId={clip.indexeddbKey} />
-                  <div className="absolute bottom-1 right-1 bg-black/60 text-white text-xs px-1 rounded">
-                    {formatMs(clip.durationMs)}
-                  </div>
-                </div>
-                <div className="p-1.5">
-                  {editingId === clip.id ? (
-                    <div className="flex gap-1">
-                      <Input
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        onClick={(e) => e.stopPropagation()}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") handleRename(clip);
-                          if (e.key === "Escape") setEditingId(null);
-                        }}
-                        autoFocus
-                        className="h-6 text-xs"
-                      />
-                      <button onClick={(e) => { e.stopPropagation(); handleRename(clip); }} className="text-xs text-green-600">✓</button>
-                    </div>
-                  ) : (
-                    <p className="text-xs truncate font-mono">{clip.brollName}</p>
-                  )}
-                </div>
-                <div className="absolute top-1 right-1 hidden group-hover:flex gap-1 bg-black/60 rounded p-0.5">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setEditingId(clip.id); setEditName(clip.brollName); }}
-                    className="text-white hover:text-yellow-300"
-                  >
-                    <Pencil className="w-3 h-3" />
-                  </button>
-                  <button onClick={(e) => { e.stopPropagation(); handleDelete(clip); }} className="text-white hover:text-red-400">
-                    <Trash2 className="w-3 h-3" />
-                  </button>
-                </div>
-              </div>
+                clip={clip}
+                onPreview={setPreviewClipKey}
+                onEdit={(id, name) => { setEditingId(id); setEditName(name); }}
+                onDelete={handleDelete}
+                editingId={editingId}
+                editName={editName}
+                setEditName={setEditName}
+                onRename={handleRename}
+                onCancelEdit={() => setEditingId(null)}
+              />
             ))}
           </div>
         </div>
