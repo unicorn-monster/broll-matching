@@ -38,26 +38,92 @@ describe("maxTrackIndex", () => {
 });
 
 describe("pickTrack", () => {
-  it("returns create-new-track when mouseY in top zone", () => {
+  it("returns create at top edge when mouseY in first create zone", () => {
     const bands = [
-      { trackIndex: 1, top: 50, bottom: 90 },
-      { trackIndex: 0, top: 90, bottom: 130 },
+      { trackIndex: 1, top: 6, bottom: 62 },
+      { trackIndex: 0, top: 68, bottom: 124 },
     ];
-    const out = pickTrack(20, bands, { topZoneTop: 0, topZoneBottom: 50 }, 1);
+    const out = pickTrack(
+      3,
+      bands,
+      [
+        { top: 0, bottom: 6, newTrackIndex: 2 },
+        { top: 62, bottom: 68, newTrackIndex: 1 },
+        { top: 124, bottom: 130, newTrackIndex: 0 },
+      ],
+      1,
+    );
     expect(out).toEqual({ mode: "create", trackIndex: 2 });
+  });
+
+  it("returns create at between-gap zone (insert between two tracks)", () => {
+    const bands = [
+      { trackIndex: 1, top: 6, bottom: 62 },
+      { trackIndex: 0, top: 68, bottom: 124 },
+    ];
+    const out = pickTrack(
+      65,
+      bands,
+      [
+        { top: 0, bottom: 6, newTrackIndex: 2 },
+        { top: 62, bottom: 68, newTrackIndex: 1 },
+        { top: 124, bottom: 130, newTrackIndex: 0 },
+      ],
+      1,
+    );
+    expect(out).toEqual({ mode: "create", trackIndex: 1 });
+  });
+
+  it("returns create at bottom edge zone (new track sat main)", () => {
+    const bands = [
+      { trackIndex: 1, top: 6, bottom: 62 },
+      { trackIndex: 0, top: 68, bottom: 124 },
+    ];
+    const out = pickTrack(
+      127,
+      bands,
+      [
+        { top: 0, bottom: 6, newTrackIndex: 2 },
+        { top: 62, bottom: 68, newTrackIndex: 1 },
+        { top: 124, bottom: 130, newTrackIndex: 0 },
+      ],
+      1,
+    );
+    expect(out).toEqual({ mode: "create", trackIndex: 0 });
   });
 
   it("returns into-existing when mouseY in track band", () => {
     const bands = [
-      { trackIndex: 1, top: 50, bottom: 90 },
-      { trackIndex: 0, top: 90, bottom: 130 },
+      { trackIndex: 1, top: 6, bottom: 62 },
+      { trackIndex: 0, top: 68, bottom: 124 },
     ];
-    const out = pickTrack(70, bands, { topZoneTop: 0, topZoneBottom: 50 }, 1);
+    const out = pickTrack(
+      30,
+      bands,
+      [{ top: 0, bottom: 6, newTrackIndex: 2 }],
+      1,
+    );
     expect(out).toEqual({ mode: "into", trackIndex: 1 });
   });
 
-  it("returns create-track-zero when no tracks exist (empty timeline drop)", () => {
-    const out = pickTrack(50, [], { topZoneTop: 0, topZoneBottom: 100 }, -1);
+  it("returns create-track-zero when no tracks exist (empty area)", () => {
+    const out = pickTrack(
+      28,
+      [],
+      [{ top: 0, bottom: 56, newTrackIndex: 0 }],
+      -1,
+    );
     expect(out).toEqual({ mode: "create", trackIndex: 0 });
+  });
+
+  it("falls back to create above all when mouseY outside any zone or band", () => {
+    const bands = [{ trackIndex: 0, top: 6, bottom: 62 }];
+    const out = pickTrack(
+      9999,
+      bands,
+      [{ top: 0, bottom: 6, newTrackIndex: 1 }],
+      0,
+    );
+    expect(out).toEqual({ mode: "create", trackIndex: 1 });
   });
 });

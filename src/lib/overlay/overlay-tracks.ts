@@ -15,9 +15,10 @@ export interface TrackBand {
   bottom: number;
 }
 
-export interface TopZone {
-  topZoneTop: number;
-  topZoneBottom: number;
+export interface CreateZone {
+  top: number;
+  bottom: number;
+  newTrackIndex: number;
 }
 
 export type PickResult = { mode: "create" | "into"; trackIndex: number };
@@ -25,17 +26,18 @@ export type PickResult = { mode: "create" | "into"; trackIndex: number };
 export function pickTrack(
   mouseY: number,
   trackBands: TrackBand[],
-  topZone: TopZone,
-  currentMaxTrackIndex: number,
+  createZones: CreateZone[],
+  fallbackMaxTrackIndex: number,
 ): PickResult {
-  if (mouseY >= topZone.topZoneTop && mouseY < topZone.topZoneBottom) {
-    return { mode: "create", trackIndex: currentMaxTrackIndex + 1 };
+  for (const zone of createZones) {
+    if (mouseY >= zone.top && mouseY < zone.bottom) {
+      return { mode: "create", trackIndex: zone.newTrackIndex };
+    }
   }
   for (const band of trackBands) {
     if (mouseY >= band.top && mouseY < band.bottom) {
       return { mode: "into", trackIndex: band.trackIndex };
     }
   }
-  // Fallback: empty timeline → create track 0
-  return { mode: "create", trackIndex: Math.max(0, currentMaxTrackIndex + 1) };
+  return { mode: "create", trackIndex: Math.max(0, fallbackMaxTrackIndex + 1) };
 }
