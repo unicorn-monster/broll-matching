@@ -25,8 +25,7 @@ EditorShell
     ├── OverlayInspector                      (column 3 row 2 when overlay selected)
     └── TimelinePanel
         └── OverlayTracks                     (drag target + clip block renderer)
-            ├── OverlayClipBlock              (per overlay, draggable)
-            └── OverlayDropZone              (top zone visual during drag)
+            └── OverlayClipBlock              (per overlay, draggable)
 ```
 
 ## Files
@@ -37,6 +36,5 @@ EditorShell
 | `overlay-drag-source.ts`    | Hook: wires ClipTile drag events → startDrag in context             |
 | `overlay-tracks.tsx`        | Main drop target: renders tracks, ghost, handles drop/move/click    |
 | `overlay-clip-block.tsx`    | Visual block per overlay on a track row                             |
-| `overlay-drop-zone.tsx`     | "New track" zone indicator shown during drag                        |
 | `overlay-inspector.tsx`     | Inspector panel: volume, mute, fade, delete for selected overlay    |
 | `use-overlay-keyboard.ts`   | Keyboard: `C`=split, `Delete`/`Backspace`=delete, `Esc`=deselect   |
