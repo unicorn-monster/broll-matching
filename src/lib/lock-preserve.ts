@@ -1,4 +1,4 @@
-import { matchSections, type MatchedSection, type ClipMetadata } from "./auto-match";
+import { matchSections, createMatchState, markUsed, type MatchedSection, type ClipMetadata } from "./auto-match";
 import type { ParsedSection } from "./script-parser";
 
 /**
@@ -31,6 +31,7 @@ export function preserveLocks(
   const lockQueue = oldTimeline.filter((s) => s.userLocked);
   const newTimeline: MatchedSection[] = [];
   let preservedCount = 0;
+  const state = createMatchState();
 
   for (const [i, ns] of newSections.entries()) {
     const head = lockQueue[0];
@@ -50,6 +51,11 @@ export function preserveLocks(
       const totalPickedMs = firstReal ? head.durationMs * firstReal.speedFactor : 0;
       const newSpeed =
         ns.durationMs > 0 && totalPickedMs > 0 ? totalPickedMs / ns.durationMs : 1;
+      const tagKey = ns.tag.toLowerCase();
+      const fullPool = clipsByBaseName.get(tagKey) ?? [];
+      for (const c of head.clips) {
+        if (!c.isPlaceholder) markUsed(state, tagKey, fullPool, c.clipId);
+      }
       newTimeline.push({
         sectionIndex: i,
         tag: ns.tag,
@@ -64,7 +70,7 @@ export function preserveLocks(
       preservedCount++;
     } else {
       // matchSections returns one entry per input section, so this is always defined.
-      const matched = matchSections([ns], clipsByBaseName)[0]!;
+      const matched = matchSections([ns], clipsByBaseName, state)[0]!;
       newTimeline.push({ ...matched, sectionIndex: i });
     }
   }
