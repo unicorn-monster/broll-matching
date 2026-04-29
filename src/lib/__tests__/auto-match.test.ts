@@ -192,6 +192,75 @@ describe("matchSections — no back-to-back repeats", () => {
       }
     }
   });
+
+  it("with pool N and 2N adjacent sections, every clip is used exactly twice and reshuffle preserves no-repeat", () => {
+    const clips = [
+      makeClip("hook-01", 8000),
+      makeClip("hook-02", 8000),
+      makeClip("hook-03", 8000),
+      makeClip("hook-04", 8000),
+    ];
+    const map = buildClipsByBaseName(clips);
+    const sections = Array.from({ length: 8 }, () => makeSection("Hook", 3000));
+    for (let trial = 0; trial < 100; trial++) {
+      const matched = matchSections(sections, map);
+      const usage = new Map<string, number>();
+      for (const m of matched) {
+        const id = m.clips[0]!.clipId;
+        usage.set(id, (usage.get(id) ?? 0) + 1);
+      }
+      expect(usage.size).toBe(4);
+      for (const count of usage.values()) expect(count).toBe(2);
+      for (let i = 1; i < matched.length; i++) {
+        expect(matched[i]!.clips[0]!.clipId).not.toBe(matched[i - 1]!.clips[0]!.clipId);
+      }
+    }
+  });
+
+  it("with pool of 1, must reuse — no crash, no infinite loop", () => {
+    const clips = [makeClip("hook-01", 8000)];
+    const map = buildClipsByBaseName(clips);
+    const sections = Array.from({ length: 3 }, () => makeSection("Hook", 3000));
+    const matched = matchSections(sections, map);
+    expect(matched).toHaveLength(3);
+    for (const m of matched) expect(m.clips[0]!.clipId).toBe("hook-01");
+  });
+
+  it("eligibility still respected — clips shorter than section never picked", () => {
+    const clips = [
+      makeClip("hook-01", 1000),
+      makeClip("hook-02", 1000),
+      makeClip("hook-03", 8000),
+      makeClip("hook-04", 8000),
+    ];
+    const map = buildClipsByBaseName(clips);
+    const sections = Array.from({ length: 6 }, () => makeSection("Hook", 3000));
+    for (let trial = 0; trial < 50; trial++) {
+      const matched = matchSections(sections, map);
+      for (const m of matched) {
+        expect(["hook-03", "hook-04"]).toContain(m.clips[0]!.clipId);
+      }
+    }
+  });
+
+  it("queues are isolated per tag — interleaving doesn't share state", () => {
+    const clips = [
+      makeClip("hook-01", 8000), makeClip("hook-02", 8000),
+      makeClip("intro-01", 8000), makeClip("intro-02", 8000),
+    ];
+    const map = buildClipsByBaseName(clips);
+    const sections: ParsedSection[] = [
+      makeSection("Hook", 3000),
+      makeSection("Intro", 3000),
+      makeSection("Hook", 3000),
+      makeSection("Intro", 3000),
+    ];
+    for (let trial = 0; trial < 100; trial++) {
+      const matched = matchSections(sections, map);
+      expect(matched[0]!.clips[0]!.clipId).not.toBe(matched[2]!.clips[0]!.clipId);
+      expect(matched[1]!.clips[0]!.clipId).not.toBe(matched[3]!.clips[0]!.clipId);
+    }
+  });
 });
 
 describe("buildManualChain", () => {
