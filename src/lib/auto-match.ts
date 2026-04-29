@@ -115,25 +115,6 @@ export function buildClipsByBaseName(clips: ClipMetadata[]): Map<string, ClipMet
   return map;
 }
 
-function pickRandom<T>(arr: T[], avoid?: T): T {
-  if (arr.length === 1) return arr[0];
-  const choices = avoid ? arr.filter((x) => x !== avoid) : arr;
-  return choices.length ? choices[Math.floor(Math.random() * choices.length)] : arr[0];
-}
-
-/** Pick two distinct elements from an array. Caller must guarantee arr.length >= 2. */
-function pickTwoDistinct<T>(arr: T[]): [T, T] {
-  const i = Math.floor(Math.random() * arr.length);
-  let j = Math.floor(Math.random() * (arr.length - 1));
-  if (j >= i) j += 1;
-  return [arr[i]!, arr[j]!];
-}
-
-function singleClipMatch(clip: ClipMetadata, sectionMs: number): MatchedClip {
-  // Precondition: clip.durationMs >= sectionMs, so speedFactor >= 1.0 (never slows).
-  const speedFactor = clip.durationMs / sectionMs;
-  return { clipId: clip.id, indexeddbKey: clip.indexeddbKey, speedFactor, isPlaceholder: false };
-}
 
 function shuffle<T>(arr: T[], rng: () => number): T[] {
   for (let i = arr.length - 1; i > 0; i--) {
