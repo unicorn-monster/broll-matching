@@ -63,7 +63,7 @@ export function OverlayTracks({ pxPerSecond }: OverlayTracksProps) {
   const hasTracks = tracksTopDown.length > 0;
 
   const totalHeight = hasTracks
-    ? GAP_HEIGHT + tracksTopDown.length * TRACK_HEIGHT + (tracksTopDown.length - 1) * GAP_HEIGHT + GAP_HEIGHT
+    ? tracksTopDown.length * TRACK_HEIGHT + (tracksTopDown.length + 1) * GAP_HEIGHT
     : EMPTY_ZONE_HEIGHT;
 
   const snapCandidates = useMemo<SnapCandidate[]>(() => {
@@ -106,19 +106,24 @@ export function OverlayTracks({ pxPerSecond }: OverlayTracksProps) {
     const zones: CreateZone[] = [];
     zones.push({ top: 0, bottom: GAP_HEIGHT, newTrackIndex: maxIdx + 1 });
     for (let i = 0; i < tracksTopDown.length - 1; i++) {
-      const gapTop = bands[i]!.bottom;
+      const band = bands[i];
+      const trackIdx = tracksTopDown[i];
+      if (!band || trackIdx === undefined) continue;
+      const gapTop = band.bottom;
       zones.push({
         top: gapTop,
         bottom: gapTop + GAP_HEIGHT,
-        newTrackIndex: tracksTopDown[i]!,
+        newTrackIndex: trackIdx,
       });
     }
-    const last = bands[bands.length - 1]!;
-    zones.push({
-      top: last.bottom,
-      bottom: last.bottom + GAP_HEIGHT,
-      newTrackIndex: 0,
-    });
+    const last = bands[bands.length - 1];
+    if (last) {
+      zones.push({
+        top: last.bottom,
+        bottom: last.bottom + GAP_HEIGHT,
+        newTrackIndex: 0,
+      });
+    }
     return { bands, zones };
   }
 
@@ -135,10 +140,14 @@ export function OverlayTracks({ pxPerSecond }: OverlayTracksProps) {
     if (!hasTracks) return 0;
     const maxIdx = maxTrackIndex(overlays);
     if (trackIdx > maxIdx) return 0;
-    if (trackIdx === 0) return bands[bands.length - 1]!.bottom + GAP_HEIGHT - TRACK_HEIGHT;
+    if (trackIdx === 0) {
+      const lastBand = bands[bands.length - 1];
+      return lastBand ? lastBand.bottom + GAP_HEIGHT - TRACK_HEIGHT : 0;
+    }
     const upperRowIdx = tracksTopDown.indexOf(trackIdx);
     if (upperRowIdx === -1) return 0;
-    return bands[upperRowIdx]!.bottom;
+    const upperBand = bands[upperRowIdx];
+    return upperBand ? upperBand.bottom : 0;
   }
 
   function onDragOver(e: React.DragEvent) {
