@@ -35,6 +35,7 @@ interface DeleteDialogState {
   folderName: string;
   clipCount: number;
   usedCount: number;
+  folderClipIds: string[];
 }
 
 type View = "folders" | "clips";
@@ -85,6 +86,8 @@ export function LibraryPanel() {
       mediaPool.setActiveFolderId(result.folderId);
       setView("clips");
       setFileQuery("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to add folder");
     } finally {
       setBusyAdding(false);
       setBusyProgress(null);
@@ -166,6 +169,7 @@ export function LibraryPanel() {
       folderName: folder.name,
       clipCount: folderClipIds.length,
       usedCount,
+      folderClipIds,
     });
   }
 
@@ -173,14 +177,15 @@ export function LibraryPanel() {
     if (!deleteDialog) return;
     const dlg = deleteDialog;
     setDeleteDialog(null);
-    const folderClipIds = mediaPool.videos
-      .filter((v) => v.folderId === dlg.folderId)
-      .map((v) => v.id);
-    buildState.removeOverlaysReferencingClips(folderClipIds);
-    await mediaPool.removeFolder(dlg.folderId);
-    if (mediaPool.activeFolderId === dlg.folderId) {
-      mediaPool.setActiveFolderId(null);
-      setView("folders");
+    try {
+      buildState.removeOverlaysReferencingClips(dlg.folderClipIds);
+      await mediaPool.removeFolder(dlg.folderId);
+      if (mediaPool.activeFolderId === dlg.folderId) {
+        mediaPool.setActiveFolderId(null);
+        setView("folders");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete folder");
     }
   }
 
