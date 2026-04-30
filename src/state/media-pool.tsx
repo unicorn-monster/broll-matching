@@ -1,77 +1,266 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ClipMetadata } from "@/lib/auto-match";
+import {
+  getAllClips,
+  getAllFolders,
+  getFile as getFileRecord,
+  type FolderRecord,
+} from "@/lib/media-storage";
 
-export interface AudioFileEntry {
+export interface FolderEntry {
   id: string;
-  filename: string;
-  file: File;
+  name: string;
+  createdAt: Date;
+}
+
+export interface AddFolderResult {
+  folderId: string;
+  added: number;
+  skipped: { filename: string; reason: string }[];
 }
 
 interface MediaPool {
   videos: ClipMetadata[];
-  audios: AudioFileEntry[];
   fileMap: Map<string, File>;
-  selectedAudioId: string | null;
-  setMedia: (videos: ClipMetadata[], audios: AudioFileEntry[], fileMap: Map<string, File>) => void;
-  selectAudio: (id: string | null) => void;
-  reset: () => void;
-  getFileURL: (fileId: string) => string | null;
+  folders: FolderEntry[];
+  activeFolderId: string | null;
+  setActiveFolderId: (id: string | null) => void;
+  hydrated: boolean;
+
+  addFolder: (name: string, files: File[], options?: { mergeIntoFolderId?: string }) => Promise<AddFolderResult>;
+  renameFolder: (id: string, name: string) => Promise<void>;
+  removeFolder: (id: string) => Promise<void>;
+  reset: () => Promise<void>;
+
   getFile: (fileId: string) => File | null;
+  getFileURL: (fileId: string) => string | null;
 }
 
 const MediaPoolContext = createContext<MediaPool | null>(null);
 
 export function MediaPoolProvider({ children }: { children: React.ReactNode }) {
   const [videos, setVideos] = useState<ClipMetadata[]>([]);
-  const [audios, setAudios] = useState<AudioFileEntry[]>([]);
   const [fileMap, setFileMap] = useState<Map<string, File>>(new Map());
-  const [selectedAudioId, setSelectedAudioId] = useState<string | null>(null);
-  const [urlCache] = useState<Map<string, string>>(new Map());
+  const [folders, setFolders] = useState<FolderEntry[]>([]);
+  const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+  const urlCacheRef = useRef<Map<string, string>>(new Map());
 
-  const setMedia = useCallback(
-    (v: ClipMetadata[], a: AudioFileEntry[], fm: Map<string, File>) => {
-      for (const url of urlCache.values()) URL.revokeObjectURL(url);
-      urlCache.clear();
-      setVideos(v);
-      setAudios(a);
-      setFileMap(fm);
-      setSelectedAudioId(null);
-    },
-    [urlCache],
-  );
+  // Hydrate from IDB on mount
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [folderRecs, clipRecs] = await Promise.all([getAllFolders(), getAllClips()]);
+      if (cancelled) return;
 
-  const reset = useCallback(() => {
-    for (const url of urlCache.values()) URL.revokeObjectURL(url);
-    urlCache.clear();
-    setVideos([]);
-    setAudios([]);
-    setFileMap(new Map());
-    setSelectedAudioId(null);
-  }, [urlCache]);
+      const newFileMap = new Map<string, File>();
+      await Promise.all(
+        clipRecs.map(async (c) => {
+          const fr = await getFileRecord(c.fileId);
+          if (fr) {
+            newFileMap.set(c.fileId, new File([fr.blob], fr.filename, { type: fr.type }));
+          }
+        }),
+      );
+
+      if (cancelled) return;
+
+      const clips: ClipMetadata[] = clipRecs.map((c) => ({
+        id: c.id,
+        brollName: c.brollName,
+        baseName: c.baseName,
+        durationMs: c.durationMs,
+        fileId: c.fileId,
+        folderId: c.folderId,
+        filename: c.filename,
+        width: c.width,
+        height: c.height,
+        fileSizeBytes: c.fileSizeBytes,
+        createdAt: c.createdAt,
+      }));
+
+      setFolders(folderRecs.map((f: FolderRecord) => ({ id: f.id, name: f.name, createdAt: f.createdAt })));
+      setVideos(clips);
+      setFileMap(newFileMap);
+      setHydrated(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const getFile = useCallback((fileId: string) => fileMap.get(fileId) ?? null, [fileMap]);
 
   const getFileURL = useCallback(
     (fileId: string) => {
-      const cached = urlCache.get(fileId);
+      const cache = urlCacheRef.current;
+      const cached = cache.get(fileId);
       if (cached) return cached;
       const file = fileMap.get(fileId);
       if (!file) return null;
       const url = URL.createObjectURL(file);
-      urlCache.set(fileId, url);
+      cache.set(fileId, url);
       return url;
     },
-    [fileMap, urlCache],
+    [fileMap],
   );
+
+  const addFolder = useCallback(
+    async (
+      name: string,
+      files: File[],
+      options?: { mergeIntoFolderId?: string },
+    ): Promise<AddFolderResult> => {
+      const { addFolderWithClips } = await import("@/lib/media-storage");
+      const { validateBrollFile } = await import("@/lib/broll-validation");
+      const { extractVideoMetadata } = await import("@/lib/video-metadata");
+      const { deriveBaseName } = await import("@/lib/broll");
+
+      const folderId = options?.mergeIntoFolderId ?? crypto.randomUUID();
+      const existingFolder = folders.find((f) => f.id === folderId);
+      const folderRec = existingFolder ?? { id: folderId, name, createdAt: new Date() };
+
+      const skipped: { filename: string; reason: string }[] = [];
+      const existingNamesInFolder = new Set(
+        videos.filter((v) => v.folderId === folderId).map((v) => v.brollName),
+      );
+
+      const acceptedClips: ClipMetadata[] = [];
+      const acceptedFiles: { id: string; blob: Blob; type: string; filename: string }[] = [];
+
+      await Promise.all(
+        files.map(async (file) => {
+          const result = validateBrollFile(file);
+          if (!result.valid) {
+            skipped.push({ filename: file.name, reason: result.reason });
+            return;
+          }
+          if (existingNamesInFolder.has(result.brollName)) {
+            skipped.push({ filename: file.name, reason: "broll name already exists in this folder" });
+            return;
+          }
+          try {
+            const meta = await extractVideoMetadata(file);
+            const fileId = crypto.randomUUID();
+            acceptedClips.push({
+              id: fileId,
+              brollName: result.brollName,
+              baseName: deriveBaseName(result.brollName),
+              durationMs: meta.durationMs,
+              fileId,
+              folderId,
+              filename: file.name,
+              width: meta.width,
+              height: meta.height,
+              fileSizeBytes: file.size,
+              createdAt: new Date(),
+            });
+            acceptedFiles.push({ id: fileId, blob: file, type: file.type, filename: file.name });
+          } catch {
+            skipped.push({ filename: file.name, reason: "failed to read video metadata" });
+          }
+        }),
+      );
+
+      await addFolderWithClips(
+        { id: folderRec.id, name: folderRec.name, createdAt: folderRec.createdAt },
+        acceptedClips.map((c) => ({
+          id: c.id,
+          folderId: c.folderId,
+          brollName: c.brollName,
+          baseName: c.baseName,
+          durationMs: c.durationMs,
+          fileId: c.fileId,
+          filename: c.filename,
+          width: c.width,
+          height: c.height,
+          fileSizeBytes: c.fileSizeBytes,
+          createdAt: c.createdAt,
+        })),
+        acceptedFiles,
+      );
+
+      setFolders((prev) =>
+        options?.mergeIntoFolderId ? prev : [...prev, { id: folderRec.id, name: folderRec.name, createdAt: folderRec.createdAt }],
+      );
+      setVideos((prev) => [...prev, ...acceptedClips]);
+      setFileMap((prev) => {
+        const next = new Map(prev);
+        for (const af of acceptedFiles) {
+          next.set(af.id, new File([af.blob], af.filename, { type: af.type }));
+        }
+        return next;
+      });
+
+      return { folderId, added: acceptedClips.length, skipped };
+    },
+    [folders, videos],
+  );
+
+  const removeFolder = useCallback(
+    async (id: string) => {
+      const { removeFolder: removeFolderIDB } = await import("@/lib/media-storage");
+      const folderClipFileIds = videos.filter((v) => v.folderId === id).map((v) => v.fileId);
+
+      await removeFolderIDB(id);
+
+      const cache = urlCacheRef.current;
+      for (const fileId of folderClipFileIds) {
+        const url = cache.get(fileId);
+        if (url) {
+          URL.revokeObjectURL(url);
+          cache.delete(fileId);
+        }
+      }
+
+      setFolders((prev) => prev.filter((f) => f.id !== id));
+      setVideos((prev) => prev.filter((v) => v.folderId !== id));
+      setFileMap((prev) => {
+        const next = new Map(prev);
+        for (const fid of folderClipFileIds) next.delete(fid);
+        return next;
+      });
+      setActiveFolderId((cur) => (cur === id ? null : cur));
+    },
+    [videos],
+  );
+
+  const renameFolder = useCallback(async (id: string, name: string) => {
+    const { renameFolder: renameFolderIDB } = await import("@/lib/media-storage");
+    await renameFolderIDB(id, name);
+    setFolders((prev) => prev.map((f) => (f.id === id ? { ...f, name } : f)));
+  }, []);
+
+  const reset = useCallback(async () => {
+    const { resetAll } = await import("@/lib/media-storage");
+    await resetAll();
+    const cache = urlCacheRef.current;
+    for (const url of cache.values()) URL.revokeObjectURL(url);
+    cache.clear();
+    setFolders([]);
+    setVideos([]);
+    setFileMap(new Map());
+    setActiveFolderId(null);
+  }, []);
 
   const value = useMemo<MediaPool>(
     () => ({
-      videos, audios, fileMap, selectedAudioId,
-      setMedia, selectAudio: setSelectedAudioId, reset, getFileURL, getFile,
+      videos,
+      fileMap,
+      folders,
+      activeFolderId,
+      setActiveFolderId,
+      hydrated,
+      addFolder,
+      renameFolder,
+      removeFolder,
+      reset,
+      getFile,
+      getFileURL,
     }),
-    [videos, audios, fileMap, selectedAudioId, setMedia, reset, getFileURL, getFile],
+    [videos, fileMap, folders, activeFolderId, hydrated, addFolder, renameFolder, removeFolder, reset, getFile, getFileURL],
   );
 
   return <MediaPoolContext.Provider value={value}>{children}</MediaPoolContext.Provider>;
