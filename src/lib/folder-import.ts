@@ -24,7 +24,7 @@ export function categorizeFiles(files: File[]): CategorizedFiles {
 export async function* walkDirectoryHandle(
   handle: FileSystemDirectoryHandle,
 ): AsyncGenerator<File, void, unknown> {
-  for await (const entry of (handle as unknown as { values(): AsyncIterable<FileSystemHandle> }).values()) {
+  for await (const entry of (handle as FileSystemDirectoryHandle & { values(): AsyncIterable<FileSystemHandle> }).values()) {
     if (entry.kind === "file") {
       const fileHandle = entry as FileSystemFileHandle;
       yield await fileHandle.getFile();
