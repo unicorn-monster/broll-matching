@@ -14,7 +14,7 @@ describe("parseScript — SRT-style", () => {
     });
     // 1250ms → frame 38 (1266.67ms), 2833ms → frame 85 (2833.33ms)
     // durationMs = 85 frames - 38 frames = 47 frames = 1566.67ms
-    expect(result.sections[0].durationMs).toBeCloseTo(1566.6667, 3);
+    expect(result.sections[0]!.durationMs).toBeCloseTo(1566.6667, 3);
   });
 
   it("parses MM:SS,mmm shorthand", () => {
@@ -26,13 +26,13 @@ describe("parseScript — SRT-style", () => {
   it("accepts legacy MM:SS (no ms, treated as ,000)", () => {
     const result = parseScript("00:00 --> 00:04 || Hook || text", BASE_NAMES);
     expect(result.errors).toHaveLength(0);
-    expect(result.sections[0].durationMs).toBe(4000); // frame-aligned: 4s = 120 frames exact
+    expect(result.sections[0]!.durationMs).toBe(4000); // frame-aligned: 4s = 120 frames exact
   });
 
   it("snaps start/end to frame boundaries", () => {
     // 1050ms: 1050 * 30 / 1000 = 31.5 → rounds to frame 32 (1066.67ms)
     const result = parseScript("00:01,000 --> 00:01,050 || Hook || tiny", BASE_NAMES);
-    const d = result.sections[0].durationMs;
+    const d = result.sections[0]!.durationMs;
     const frameCount = (d * 30) / 1000;
     // duration must land exactly on a frame boundary (integer frame count)
     expect(Math.abs(frameCount - Math.round(frameCount))).toBeLessThan(1e-9);
@@ -47,7 +47,7 @@ describe("parseScript — SRT-style", () => {
   it("errors on invalid line", () => {
     const result = parseScript("not a valid line", BASE_NAMES);
     expect(result.errors).toHaveLength(1);
-    expect(result.errors[0].line).toBe(1);
+    expect(result.errors[0]!.line).toBe(1);
   });
 
   it("warns on unknown tag (case-insensitive)", () => {
@@ -68,7 +68,7 @@ describe("parseScript — SRT-style", () => {
   it("errors on reversed timestamps (end before start)", () => {
     const result = parseScript("00:00:05,000 --> 00:00:03,000 || Hook || text", BASE_NAMES);
     expect(result.errors).toHaveLength(1);
-    expect(result.errors[0].message).toMatch(/end time is before start time/i);
+    expect(result.errors[0]!.message).toMatch(/end time is before start time/i);
     expect(result.sections).toHaveLength(0);
   });
 
@@ -76,7 +76,7 @@ describe("parseScript — SRT-style", () => {
     const result = parseScript("00:00:00,000 - 00:00:02,833 ||Hook|| text", BASE_NAMES);
     expect(result.errors).toHaveLength(0);
     expect(result.sections).toHaveLength(1);
-    expect(result.sections[0].tag).toBe("Hook");
+    expect(result.sections[0]!.tag).toBe("Hook");
   });
 
   it("accepts en-dash separator", () => {
@@ -95,14 +95,14 @@ describe("parseScript — SRT-style", () => {
     const result = parseScript("00:00:00.000 - 00:00:02.833 || Hook || text", BASE_NAMES);
     expect(result.errors).toHaveLength(0);
     expect(result.sections).toHaveLength(1);
-    expect(result.sections[0].tag).toBe("Hook");
+    expect(result.sections[0]!.tag).toBe("Hook");
   });
 
   it("accepts period decimal separator with --> and produces same duration as comma form", () => {
     const withPeriod = parseScript("00:00:01.250 --> 00:00:02.833 || Hook || text", BASE_NAMES);
     const withComma = parseScript("00:00:01,250 --> 00:00:02,833 || Hook || text", BASE_NAMES);
     expect(withPeriod.errors).toHaveLength(0);
-    expect(withPeriod.sections[0].durationMs).toBe(withComma.sections[0].durationMs);
+    expect(withPeriod.sections[0]!.durationMs).toBe(withComma.sections[0]!.durationMs);
   });
 
   it("accepts mixed comma and period decimal separators on same line", () => {

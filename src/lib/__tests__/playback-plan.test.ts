@@ -152,9 +152,9 @@ describe("buildFullTimelinePlaybackPlan", () => {
 
 describe("findClipAtMs", () => {
   const clips = [
-    { srcUrl: "blob:a", startMs: 0, endMs: 1000, speedFactor: 1 },
-    { srcUrl: "blob:b", startMs: 1000, endMs: 2500, speedFactor: 1.5 },
-    { srcUrl: "blob:c", startMs: 2500, endMs: 4000, speedFactor: 1 },
+    { srcUrl: "blob:a", startMs: 0, endMs: 1000, speedFactor: 1, fileId: "a" },
+    { srcUrl: "blob:b", startMs: 1000, endMs: 2500, speedFactor: 1.5, fileId: "b" },
+    { srcUrl: "blob:c", startMs: 2500, endMs: 4000, speedFactor: 1, fileId: "c" },
   ];
 
   it("returns the clip whose half-open range [start, end) contains the ms", () => {

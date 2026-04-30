@@ -175,7 +175,7 @@ self.onmessage = async (e: MessageEvent) => {
     try { await ffmpeg.deleteFile("audio.mp3"); } catch {}
     try { await ffmpeg.deleteFile("output.mp4"); } catch {}
 
-    self.postMessage({ type: "done", output: output.buffer }, [output.buffer]);
+    self.postMessage({ type: "done", output: output.buffer }, { transfer: [output.buffer] });
   } catch (err: unknown) {
     self.postMessage({
       type: "render-error",

@@ -48,16 +48,16 @@ describe("buildClipsByBaseName", () => {
 
 describe("matchSections", () => {
   it("no matching base name — placeholder", () => {
-    const [matched] = matchSections([makeSection("unknown-tag", 4000)], new Map());
+    const matched = matchSections([makeSection("unknown-tag", 4000)], new Map())[0]!;
     expect(matched.clips).toHaveLength(1);
-    expect(matched.clips[0].isPlaceholder).toBe(true);
+    expect(matched.clips[0]!.isPlaceholder).toBe(true);
     expect(matched.warnings.some((w) => w.includes("No B-roll"))).toBe(true);
   });
 
   it("zero-duration section — empty clips", () => {
     const clips = [makeClip("hook-01", 5000)];
     const map = buildClipsByBaseName(clips);
-    const [matched] = matchSections([makeSection("Hook", 0)], map);
+    const matched = matchSections([makeSection("Hook", 0)], map)[0]!;
     expect(matched.clips).toHaveLength(0);
   });
 
@@ -65,7 +65,7 @@ describe("matchSections", () => {
     // Section 1s, clip 1s. Eligible (>= 1s), trimmed to 1s.
     const clips = [makeClip("hook-01", 1000)];
     const map = buildClipsByBaseName(clips);
-    const [matched] = matchSections([makeSection("Hook", 1000)], map);
+    const matched = matchSections([makeSection("Hook", 1000)], map)[0]!;
     expect(matched.clips).toHaveLength(1);
     const c = matched.clips[0]!;
     expect(c.clipId).toBe("hook-01");
@@ -78,7 +78,7 @@ describe("matchSections", () => {
     // Section 3s, clip 4s. Trim to 3s.
     const clips = [makeClip("hook-01", 4000)];
     const map = buildClipsByBaseName(clips);
-    const [matched] = matchSections([makeSection("Hook", 3000)], map);
+    const matched = matchSections([makeSection("Hook", 3000)], map)[0]!;
     expect(matched.clips).toHaveLength(1);
     const c = matched.clips[0]!;
     expect(c.speedFactor).toBe(1);
@@ -90,7 +90,7 @@ describe("matchSections", () => {
     const clips = [makeClip("hook-01", 2000), makeClip("hook-02", 4000), makeClip("hook-03", 5000)];
     const map = buildClipsByBaseName(clips);
     for (let trial = 0; trial < 100; trial++) {
-      const [matched] = matchSections([makeSection("Hook", 3000)], map);
+      const matched = matchSections([makeSection("Hook", 3000)], map)[0]!;
       expect(matched.clips).toHaveLength(1);
       const c = matched.clips[0]!;
       expect(c.clipId).not.toBe("hook-01");
@@ -106,7 +106,7 @@ describe("matchSections", () => {
     const map = buildClipsByBaseName(clips);
     const seen = new Set<string>();
     for (let trial = 0; trial < 200; trial++) {
-      const [matched] = matchSections([makeSection("Hook", 3000)], map);
+      const matched = matchSections([makeSection("Hook", 3000)], map)[0]!;
       seen.add(matched.clips[0]!.clipId);
     }
     expect(seen.size).toBeGreaterThan(1);
@@ -116,7 +116,7 @@ describe("matchSections", () => {
     // Section 5s, all candidates shorter (2s, 3s) — no eligible clip → placeholder.
     const clips = [makeClip("hook-01", 2000), makeClip("hook-02", 3000)];
     const map = buildClipsByBaseName(clips);
-    const [matched] = matchSections([makeSection("Hook", 5000)], map);
+    const matched = matchSections([makeSection("Hook", 5000)], map)[0]!;
     expect(matched.clips).toHaveLength(1);
     expect(matched.clips[0]!.isPlaceholder).toBe(true);
     expect(matched.clips[0]!.clipId).toBe("placeholder");
