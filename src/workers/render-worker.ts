@@ -67,10 +67,12 @@ self.onmessage = async (e: MessageEvent) => {
 
   if (data.cmd !== "render") return;
 
-  const { timeline, audioBuffer, clips } = data as {
+  const { timeline, audioBuffer, clips, outputWidth, outputHeight } = data as {
     timeline: MatchedSection[];
     audioBuffer: ArrayBuffer;
     clips: Record<string, ArrayBuffer>;
+    outputWidth: number;
+    outputHeight: number;
   };
 
   try {
@@ -103,7 +105,7 @@ self.onmessage = async (e: MessageEvent) => {
           await ffmpeg.exec([
             "-y",
             "-f", "lavfi",
-            "-i", `color=c=black:s=1080x1350:r=30:d=${section.durationMs / 1000}`,
+            "-i", `color=c=black:s=${outputWidth}x${outputHeight}:r=30:d=${section.durationMs / 1000}`,
             "-c:v", "libx264",
             "-preset", "ultrafast",
             "-tune", "fastdecode",
@@ -124,7 +126,10 @@ self.onmessage = async (e: MessageEvent) => {
             "-y",
             "-i", inputName,
             ...(matched.trimDurationMs ? ["-t", String(matched.trimDurationMs / 1000)] : []),
-            "-vf", `setpts=${(1 / matched.speedFactor).toFixed(4)}*PTS`,
+            "-vf",
+            `scale=${outputWidth}:${outputHeight}:force_original_aspect_ratio=decrease,` +
+            `pad=${outputWidth}:${outputHeight}:(ow-iw)/2:(oh-ih)/2,` +
+            `setpts=${(1 / matched.speedFactor).toFixed(4)}*PTS`,
             "-an",
             "-c:v", "libx264",
             "-preset", "ultrafast",
