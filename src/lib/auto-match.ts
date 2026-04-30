@@ -55,7 +55,7 @@ export interface ClipMetadata {
   brollName: string;
   baseName: string;
   durationMs: number;
-  indexeddbKey: string;
+  fileId: string;
   folderId: string;
   productId: string;
   filename: string;
@@ -67,7 +67,7 @@ export interface ClipMetadata {
 
 export interface MatchedClip {
   clipId: string;
-  indexeddbKey: string;
+  fileId: string;
   speedFactor: number;
   trimDurationMs?: number;
   isPlaceholder: boolean;
@@ -91,7 +91,7 @@ export interface MatchedSection {
  */
 export function buildManualChain(picks: ClipMetadata[], sectionMs: number): MatchedClip[] {
   if (picks.length === 0) {
-    return [{ clipId: "placeholder", indexeddbKey: "", speedFactor: 1, isPlaceholder: true }];
+    return [{ clipId: "placeholder", fileId: "", speedFactor: 1, isPlaceholder: true }];
   }
   const speedFactor = computeChainSpeed(
     picks.map((p) => p.durationMs),
@@ -99,7 +99,7 @@ export function buildManualChain(picks: ClipMetadata[], sectionMs: number): Matc
   );
   return picks.map((p) => ({
     clipId: p.id,
-    indexeddbKey: p.indexeddbKey,
+    fileId: p.fileId,
     speedFactor,
     isPlaceholder: false,
   }));
@@ -217,7 +217,7 @@ export function matchSections(
         sectionIndex,
         tag: section.tag,
         durationMs: section.durationMs,
-        clips: [{ clipId: "placeholder", indexeddbKey: "", speedFactor: 1.0, isPlaceholder: true }],
+        clips: [{ clipId: "placeholder", fileId: "", speedFactor: 1.0, isPlaceholder: true }],
         warnings,
       };
     }
@@ -231,7 +231,7 @@ export function matchSections(
         sectionIndex,
         tag: section.tag,
         durationMs: section.durationMs,
-        clips: [{ clipId: "placeholder", indexeddbKey: "", speedFactor: 1, isPlaceholder: true }],
+        clips: [{ clipId: "placeholder", fileId: "", speedFactor: 1, isPlaceholder: true }],
         warnings,
       };
     }
@@ -243,7 +243,7 @@ export function matchSections(
       durationMs: section.durationMs,
       clips: [{
         clipId: clip.id,
-        indexeddbKey: clip.indexeddbKey,
+        fileId: clip.fileId,
         speedFactor: 1,
         trimDurationMs: section.durationMs,
         isPlaceholder: false,
