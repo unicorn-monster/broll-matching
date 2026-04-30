@@ -5,11 +5,11 @@ export interface PlaybackPlanClip {
   startMs: number;
   endMs: number;
   speedFactor: number;
-  indexeddbKey: string;
+  fileId: string;
 }
 
 export function clipIdentityKey(clip: PlaybackPlanClip): string {
-  return `${clip.indexeddbKey}:${clip.startMs}`;
+  return `${clip.fileId}:${clip.startMs}`;
 }
 
 export interface PlaybackPlan {
@@ -55,7 +55,7 @@ export function buildSectionPlaybackPlan(
   let cursor = 0;
   const slot = section.durationMs / real.length;
   for (const c of real) {
-    const url = clipBlobUrls.get(c.indexeddbKey);
+    const url = clipBlobUrls.get(c.fileId);
     const startMs = cursor;
     const endMs = cursor + slot;
     // Advance cursor unconditionally so a missing blob doesn't slide later
@@ -63,7 +63,7 @@ export function buildSectionPlaybackPlan(
     // claimed even when nothing is emitted (player renders black for the gap).
     cursor = endMs;
     if (!url) continue;
-    clips.push({ srcUrl: url, startMs, endMs, speedFactor: c.speedFactor, indexeddbKey: c.indexeddbKey });
+    clips.push({ srcUrl: url, startMs, endMs, speedFactor: c.speedFactor, fileId: c.fileId });
   }
 
   return { clips, audioUrl, audioStartMs };
@@ -94,9 +94,9 @@ export function buildFullTimelinePlaybackPlan(
       const startMs = cursor;
       const endMs = cursor + slot;
       cursor = endMs;
-      const url = clipBlobUrls.get(c.indexeddbKey);
+      const url = clipBlobUrls.get(c.fileId);
       if (!url) continue;
-      clips.push({ srcUrl: url, startMs, endMs, speedFactor: c.speedFactor, indexeddbKey: c.indexeddbKey });
+      clips.push({ srcUrl: url, startMs, endMs, speedFactor: c.speedFactor, fileId: c.fileId });
     }
   }
   return { clips, audioUrl, audioStartMs: 0 };

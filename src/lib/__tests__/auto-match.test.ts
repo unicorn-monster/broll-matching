@@ -14,7 +14,7 @@ const makeClip = (brollName: string, durationMs: number) => ({
   brollName,
   baseName: brollName.replace(/-\d+$/, ""),
   durationMs,
-  indexeddbKey: brollName,
+  fileId: brollName,
   folderId: "f1",
   productId: "p1",
   filename: `${brollName}.mp4`,
@@ -264,8 +264,8 @@ describe("matchSections — no back-to-back repeats", () => {
 });
 
 describe("buildManualChain", () => {
-  const clipA = { id: "a", indexeddbKey: "a-key", durationMs: 2500 } as ClipMetadata;
-  const clipB = { id: "b", indexeddbKey: "b-key", durationMs: 3400 } as ClipMetadata;
+  const clipA = { id: "a", fileId: "a-key", durationMs: 2500 } as ClipMetadata;
+  const clipB = { id: "b", fileId: "b-key", durationMs: 3400 } as ClipMetadata;
 
   it("produces uniform speedFactor across all picks", () => {
     const chain = buildManualChain([clipA, clipB], 5000);
@@ -275,12 +275,12 @@ describe("buildManualChain", () => {
     expect(chain[1]!.speedFactor).toBeCloseTo(expected, 4);
   });
 
-  it("preserves clipId and indexeddbKey for each pick in order", () => {
+  it("preserves clipId and fileId for each pick in order", () => {
     const chain = buildManualChain([clipA, clipB], 5000);
     expect(chain[0]!.clipId).toBe("a");
-    expect(chain[0]!.indexeddbKey).toBe("a-key");
+    expect(chain[0]!.fileId).toBe("a-key");
     expect(chain[1]!.clipId).toBe("b");
-    expect(chain[1]!.indexeddbKey).toBe("b-key");
+    expect(chain[1]!.fileId).toBe("b-key");
   });
 
   it("sets isPlaceholder false for all picks", () => {
@@ -293,7 +293,7 @@ describe("buildManualChain", () => {
     expect(chain).toHaveLength(1);
     expect(chain[0]!.isPlaceholder).toBe(true);
     expect(chain[0]!.clipId).toBe("placeholder");
-    expect(chain[0]!.indexeddbKey).toBe("");
+    expect(chain[0]!.fileId).toBe("");
     expect(chain[0]!.speedFactor).toBe(1);
   });
 });

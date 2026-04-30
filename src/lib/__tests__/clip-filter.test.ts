@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { filterClipsByQuery } from "../clip-filter";
 
-type Clip = { id: string; brollName: string; filename: string; durationMs: number; indexeddbKey: string; folderId: string };
+type Clip = { id: string; brollName: string; filename: string; durationMs: number; fileId: string; folderId: string };
 
 const clips: Clip[] = [
-  { id: "1", brollName: "ump-clipper-compressthenail-01", filename: "clip_compress.mp4", durationMs: 3710, indexeddbKey: "k1", folderId: "f1" },
-  { id: "2", brollName: "ump-clipper-cutthequick-01",    filename: "clip_cut.mp4",      durationMs: 5080, indexeddbKey: "k2", folderId: "f1" },
-  { id: "3", brollName: "fs-dremel-loadnshake-01",       filename: "dremel_load.mov",   durationMs: 2000, indexeddbKey: "k3", folderId: "f2" },
+  { id: "1", brollName: "ump-clipper-compressthenail-01", filename: "clip_compress.mp4", durationMs: 3710, fileId: "k1", folderId: "f1" },
+  { id: "2", brollName: "ump-clipper-cutthequick-01",    filename: "clip_cut.mp4",      durationMs: 5080, fileId: "k2", folderId: "f1" },
+  { id: "3", brollName: "fs-dremel-loadnshake-01",       filename: "dremel_load.mov",   durationMs: 2000, fileId: "k3", folderId: "f2" },
 ];
 
 describe("filterClipsByQuery", () => {

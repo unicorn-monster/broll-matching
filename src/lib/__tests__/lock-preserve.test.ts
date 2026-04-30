@@ -8,7 +8,7 @@ const makeClip = (id: string, brollName: string, durationMs: number): ClipMetada
   brollName,
   baseName: brollName.replace(/-\d+$/, ""),
   durationMs,
-  indexeddbKey: id,
+  fileId: id,
   folderId: "f1",
   productId: "p1",
   filename: `${brollName}.mp4`,
@@ -29,7 +29,7 @@ const makeMatched = (
   durationMs,
   clips: clipIds.map((id) => ({
     clipId: id,
-    indexeddbKey: id,
+    fileId: id,
     speedFactor: 1,
     isPlaceholder: false,
   })),

@@ -3,7 +3,7 @@ import { buildSectionPlaybackPlan, buildFullTimelinePlaybackPlan, findClipAtMs, 
 import type { MatchedSection } from "../auto-match";
 
 // First arg (clip duration) is informational only — MatchedClip carries
-// speedFactor + indexeddbKey, not its own duration. Keeps call sites readable.
+// speedFactor + fileId, not its own duration. Keeps call sites readable.
 const seg = (
   _durationMs: number,
   speedFactor: number,
@@ -11,7 +11,7 @@ const seg = (
   i = 0,
 ) => ({
   clipId: `c${i}`,
-  indexeddbKey: `k${i}`,
+  fileId: `k${i}`,
   speedFactor,
   isPlaceholder,
 });
@@ -89,7 +89,7 @@ function s(durationMs: number, clips: { key: string; speed: number; placeholder?
     warnings: [],
     clips: clips.map((c) => ({
       clipId: `id-${c.key}`,
-      indexeddbKey: c.key,
+      fileId: c.key,
       speedFactor: c.speed,
       isPlaceholder: !!c.placeholder,
     })),
@@ -115,9 +115,9 @@ describe("buildFullTimelinePlaybackPlan", () => {
     ]);
     const plan = buildFullTimelinePlaybackPlan(timeline, "audio.mp3", urls);
     expect(plan.clips).toEqual([
-      { srcUrl: "blob:a", startMs: 0, endMs: 2000, speedFactor: 1, indexeddbKey: "a" },
-      { srcUrl: "blob:b", startMs: 2000, endMs: 3500, speedFactor: 2, indexeddbKey: "b" },
-      { srcUrl: "blob:c", startMs: 3500, endMs: 5000, speedFactor: 1.5, indexeddbKey: "c" },
+      { srcUrl: "blob:a", startMs: 0, endMs: 2000, speedFactor: 1, fileId: "a" },
+      { srcUrl: "blob:b", startMs: 2000, endMs: 3500, speedFactor: 2, fileId: "b" },
+      { srcUrl: "blob:c", startMs: 3500, endMs: 5000, speedFactor: 1.5, fileId: "c" },
     ]);
   });
 
@@ -130,8 +130,8 @@ describe("buildFullTimelinePlaybackPlan", () => {
     const urls = new Map([["a", "blob:a"], ["b", "blob:b"]]);
     const plan = buildFullTimelinePlaybackPlan(timeline, "audio.mp3", urls);
     expect(plan.clips).toEqual([
-      { srcUrl: "blob:a", startMs: 0, endMs: 1000, speedFactor: 1, indexeddbKey: "a" },
-      { srcUrl: "blob:b", startMs: 3000, endMs: 4000, speedFactor: 1, indexeddbKey: "b" },
+      { srcUrl: "blob:a", startMs: 0, endMs: 1000, speedFactor: 1, fileId: "a" },
+      { srcUrl: "blob:b", startMs: 3000, endMs: 4000, speedFactor: 1, fileId: "b" },
     ]);
   });
 
@@ -144,8 +144,8 @@ describe("buildFullTimelinePlaybackPlan", () => {
     const urls = new Map([["a", "blob:a"], ["b", "blob:b"]]);
     const plan = buildFullTimelinePlaybackPlan(timeline, "audio.mp3", urls);
     expect(plan.clips).toEqual([
-      { srcUrl: "blob:a", startMs: 0, endMs: 1000, speedFactor: 1, indexeddbKey: "a" },
-      { srcUrl: "blob:b", startMs: 3000, endMs: 4000, speedFactor: 1, indexeddbKey: "b" },
+      { srcUrl: "blob:a", startMs: 0, endMs: 1000, speedFactor: 1, fileId: "a" },
+      { srcUrl: "blob:b", startMs: 3000, endMs: 4000, speedFactor: 1, fileId: "b" },
     ]);
   });
 });
@@ -198,20 +198,20 @@ describe("findSectionAtMs", () => {
 });
 
 describe("clipIdentityKey", () => {
-  it("returns indexeddbKey:startMs", () => {
-    const clip = { srcUrl: "blob:abc", startMs: 1500, endMs: 3000, speedFactor: 1, indexeddbKey: "k7" };
+  it("returns fileId:startMs", () => {
+    const clip = { srcUrl: "blob:abc", startMs: 1500, endMs: 3000, speedFactor: 1, fileId: "k7" };
     expect(clipIdentityKey(clip)).toBe("k7:1500");
   });
 
   it("differentiates same blob at different startMs (same clip used twice)", () => {
-    const a = { srcUrl: "blob:abc", startMs: 0, endMs: 1000, speedFactor: 1, indexeddbKey: "k1" };
-    const b = { srcUrl: "blob:abc", startMs: 4000, endMs: 5000, speedFactor: 1, indexeddbKey: "k1" };
+    const a = { srcUrl: "blob:abc", startMs: 0, endMs: 1000, speedFactor: 1, fileId: "k1" };
+    const b = { srcUrl: "blob:abc", startMs: 4000, endMs: 5000, speedFactor: 1, fileId: "k1" };
     expect(clipIdentityKey(a)).not.toBe(clipIdentityKey(b));
   });
 
   it("matches across plan rebuilds when key+startMs are equal", () => {
-    const a = { srcUrl: "blob:1", startMs: 2000, endMs: 4000, speedFactor: 1, indexeddbKey: "k3" };
-    const a2 = { srcUrl: "blob:2", startMs: 2000, endMs: 4000, speedFactor: 1.2, indexeddbKey: "k3" };
+    const a = { srcUrl: "blob:1", startMs: 2000, endMs: 4000, speedFactor: 1, fileId: "k3" };
+    const a2 = { srcUrl: "blob:2", startMs: 2000, endMs: 4000, speedFactor: 1.2, fileId: "k3" };
     expect(clipIdentityKey(a)).toBe(clipIdentityKey(a2));
   });
 });
