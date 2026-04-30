@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { getClip } from "@/lib/clip-storage";
+import { useMediaPool } from "@/state/media-pool";
 import { formatMs } from "@/lib/format-time";
 import type { ClipMetadata } from "@/lib/auto-match";
 
@@ -16,26 +15,9 @@ interface PreviewPaneProps {
 }
 
 export function PreviewPane({ clip, actionLabel, actionDisabled, onUse }: PreviewPaneProps) {
-  const [videoSrc, setVideoSrc] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!clip) {
-      setVideoSrc(null);
-      return;
-    }
-    let objectUrl: string | null = null;
-    let active = true;
-    getClip(clip.fileId).then((buf) => {
-      if (!active || !buf) return;
-      objectUrl = URL.createObjectURL(new Blob([buf], { type: "video/mp4" }));
-      setVideoSrc(objectUrl);
-    });
-    return () => {
-      active = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-      setVideoSrc(null);
-    };
-  }, [clip?.fileId]);
+  const mediaPool = useMediaPool();
+  // Synchronous lookup — pool manages URL lifetime, no cleanup needed
+  const videoSrc = clip ? mediaPool.getFileURL(clip.fileId) : null;
 
   if (!clip) {
     return (

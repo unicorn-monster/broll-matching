@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
-import { getThumbnail } from "@/lib/clip-storage";
+import { useMediaPool } from "@/state/media-pool";
 import type { OverlayItem } from "@/lib/overlay/overlay-types";
 
 interface OverlayClipBlockProps {
@@ -25,22 +24,9 @@ export function OverlayClipBlock({
   const left = (overlay.startMs / 1000) * pxPerSecond;
   const width = Math.max(2, (overlay.durationMs / 1000) * pxPerSecond);
 
-  const [thumbUrl, setThumbUrl] = useState<string | null>(null);
-  useEffect(() => {
-    let active = true;
-    let url: string | null = null;
-    if (overlay.kind === "broll-video") {
-      getThumbnail(overlay.fileId).then((buf) => {
-        if (!active || !buf) return;
-        url = URL.createObjectURL(new Blob([buf], { type: "image/jpeg" }));
-        setThumbUrl(url);
-      });
-    }
-    return () => {
-      active = false;
-      if (url) URL.revokeObjectURL(url);
-    };
-  }, [overlay]);
+  const mediaPool = useMediaPool();
+  // Synchronous lookup — pool manages URL lifetime, no cleanup needed
+  const thumbUrl = overlay.kind === "broll-video" ? mediaPool.getFileURL(overlay.fileId) : null;
 
   return (
     <div
@@ -62,7 +48,14 @@ export function OverlayClipBlock({
       title={`${overlay.startMs}ms — ${overlay.startMs + overlay.durationMs}ms`}
     >
       {thumbUrl && (
-        <img src={thumbUrl} alt="" className="absolute inset-0 w-full h-full object-cover opacity-80" />
+        // Video element shows first frame automatically when paused/not playing
+        <video
+          src={thumbUrl}
+          preload="metadata"
+          muted
+          playsInline
+          className="absolute inset-0 w-full h-full object-cover opacity-80"
+        />
       )}
       <div className="relative px-1 py-0.5 text-[9px] text-white/90 truncate bg-black/30">
         {overlay.kind === "broll-video" ? overlay.clipId.slice(0, 8) : overlay.kind}

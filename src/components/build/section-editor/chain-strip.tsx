@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getThumbnail } from "@/lib/clip-storage";
+import { useMediaPool } from "@/state/media-pool";
 import { formatMs } from "@/lib/format-time";
 import type { ClipMetadata } from "@/lib/auto-match";
 
@@ -64,21 +63,9 @@ function SlotTile({
   onClick: () => void;
   onRemove: () => void;
 }) {
-  const [src, setSrc] = useState<string | null>(null);
-
-  useEffect(() => {
-    let objectUrl: string | null = null;
-    let active = true;
-    getThumbnail(clip.fileId).then((buf) => {
-      if (!active || !buf) return;
-      objectUrl = URL.createObjectURL(new Blob([buf], { type: "image/jpeg" }));
-      setSrc(objectUrl);
-    });
-    return () => {
-      active = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [clip.fileId]);
+  const mediaPool = useMediaPool();
+  // Synchronous lookup — pool manages URL lifetime, no cleanup needed
+  const src = mediaPool.getFileURL(clip.fileId);
 
   return (
     <div className="relative shrink-0 w-20 h-28">
@@ -95,7 +82,10 @@ function SlotTile({
           slot {slotIndex + 1}
         </div>
         <div className="w-full h-full bg-muted">
-          {src && <img src={src} alt={clip.brollName} className="w-full h-full object-cover" />}
+          {src && (
+            // Video shows first frame automatically when paused/not playing
+            <video src={src} preload="metadata" muted playsInline className="w-full h-full object-cover" />
+          )}
         </div>
         <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] px-1 py-0.5 truncate">
           {formatMs(clip.durationMs)}

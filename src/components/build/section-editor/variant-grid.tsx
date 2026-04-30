@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
-import { getThumbnail } from "@/lib/clip-storage";
+import { useMediaPool } from "@/state/media-pool";
 import { formatMs } from "@/lib/format-time";
 import type { ClipMetadata } from "@/lib/auto-match";
 
@@ -48,21 +47,9 @@ function VariantTile({
   inChain: boolean;
   onClick: () => void;
 }) {
-  const [src, setSrc] = useState<string | null>(null);
-
-  useEffect(() => {
-    let objectUrl: string | null = null;
-    let active = true;
-    getThumbnail(clip.fileId).then((buf) => {
-      if (!active || !buf) return;
-      objectUrl = URL.createObjectURL(new Blob([buf], { type: "image/jpeg" }));
-      setSrc(objectUrl);
-    });
-    return () => {
-      active = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [clip.id]);
+  const mediaPool = useMediaPool();
+  // Synchronous lookup — pool manages URL lifetime, no cleanup needed
+  const src = mediaPool.getFileURL(clip.fileId);
 
   return (
     <button
@@ -74,7 +61,10 @@ function VariantTile({
       )}
     >
       <div className="aspect-[4/5] bg-muted">
-        {src && <img src={src} alt={clip.brollName} className="w-full h-full object-cover" />}
+        {src && (
+          // Video shows first frame automatically when paused/not playing
+          <video src={src} preload="metadata" muted playsInline className="w-full h-full object-cover" />
+        )}
       </div>
       <div className="px-2 py-1 text-xs">
         <div className="truncate font-medium">{clip.brollName}</div>

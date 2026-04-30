@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Trash2, Pencil, Upload, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { getThumbnail } from "@/lib/clip-storage";
+import { useMediaPool } from "@/state/media-pool";
 import { deriveBaseName, isValidBrollName } from "@/lib/broll";
 import { formatMs } from "@/lib/format-time";
 import { ClipUpload } from "./clip-upload";
@@ -26,14 +26,14 @@ interface ClipGridProps {
 }
 
 function ThumbnailImage({ clipId }: { clipId: string }) {
-  const [src, setSrc] = useState<string | null>(null);
-  useEffect(() => {
-    getThumbnail(clipId).then((buf) => {
-      if (buf) setSrc(URL.createObjectURL(new Blob([buf], { type: "image/jpeg" })));
-    });
-  }, [clipId]);
+  const mediaPool = useMediaPool();
+  // Synchronous lookup — pool manages URL lifetime, no cleanup needed
+  const src = mediaPool.getFileURL(clipId);
   return src
-    ? <img src={src} alt="" className="w-full h-full object-cover" />
+    ? (
+      // Video shows first frame automatically when paused/not playing
+      <video src={src} preload="metadata" muted playsInline className="w-full h-full object-cover" />
+    )
     : <div className="w-full h-full bg-muted flex items-center justify-center text-xs text-muted-foreground">No preview</div>;
 }
 
@@ -122,8 +122,7 @@ export function ClipGrid({ clips, productId, activeFolderId, onClipsChanged, fil
     if (!confirm(`Delete ${clip.brollName}?`)) return;
     const res = await fetch(`/api/products/${productId}/clips/${clip.id}`, { method: "DELETE" });
     if (res.ok) {
-      const { deleteClip } = await import("@/lib/clip-storage");
-      await deleteClip(clip.id);
+      // TODO(Phase 7): evict from mediaPool when clip-upload.tsx is removed and pool owns deletion
       onClipsChanged();
     }
   }

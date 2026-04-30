@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Trash2 } from "lucide-react";
 import { useBuildState } from "@/components/build/build-state-context";
 import { mutateOverlay, removeOverlay, compactTracks } from "@/lib/overlay/overlay-store";
-import { getThumbnail } from "@/lib/clip-storage";
+import { useMediaPool } from "@/state/media-pool";
 import { formatMs } from "@/lib/format-time";
 
 interface OverlayInspectorProps {
@@ -15,21 +15,9 @@ export function OverlayInspector({ overlayId }: OverlayInspectorProps) {
   const { overlays, setOverlays, setSelectedOverlayId } = useBuildState();
   const overlay = overlays.find((o) => o.id === overlayId) ?? null;
 
-  const [thumbUrl, setThumbUrl] = useState<string | null>(null);
-  useEffect(() => {
-    if (!overlay || overlay.kind !== "broll-video") return;
-    let url: string | null = null;
-    let active = true;
-    getThumbnail(overlay.fileId).then((buf) => {
-      if (!active || !buf) return;
-      url = URL.createObjectURL(new Blob([buf], { type: "image/jpeg" }));
-      setThumbUrl(url);
-    });
-    return () => {
-      active = false;
-      if (url) URL.revokeObjectURL(url);
-    };
-  }, [overlay]);
+  const mediaPool = useMediaPool();
+  // Synchronous lookup — pool manages URL lifetime, no cleanup needed
+  const thumbUrl = overlay?.kind === "broll-video" ? mediaPool.getFileURL(overlay.fileId) : null;
 
   useEffect(() => {
     if (overlay === null) setSelectedOverlayId(null);
@@ -54,7 +42,10 @@ export function OverlayInspector({ overlayId }: OverlayInspectorProps) {
     <div className="h-full flex flex-col overflow-y-auto p-3 text-xs gap-3">
       <div className="flex items-center gap-2 pb-2 border-b border-border">
         <div className="w-12 h-12 bg-black/40 rounded overflow-hidden flex-shrink-0">
-          {thumbUrl && <img src={thumbUrl} alt="" className="w-full h-full object-cover" />}
+          {thumbUrl && (
+            // Video shows first frame automatically when paused/not playing
+            <video src={thumbUrl} preload="metadata" muted playsInline className="w-full h-full object-cover" />
+          )}
         </div>
         <div className="min-w-0">
           <div className="font-medium truncate">

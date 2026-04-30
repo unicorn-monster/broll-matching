@@ -5,15 +5,7 @@ import { ChevronLeft } from "lucide-react";
 import { ClipGrid } from "@/components/broll/clip-grid";
 import { FoldersGrid, type FolderTile } from "./folders-grid";
 import { filterClipsByQuery } from "@/lib/clip-filter";
-
-type Clip = {
-  id: string;
-  brollName: string;
-  filename: string;
-  durationMs: number;
-  fileId: string;
-  folderId: string;
-};
+import { useMediaPool } from "@/state/media-pool";
 
 interface LibraryPanelProps {
   productId: string;
@@ -23,21 +15,20 @@ const ALL_CLIPS = "__all__";
 
 export function LibraryPanel({ productId }: LibraryPanelProps) {
   const [folders, setFolders] = useState<FolderTile[]>([]);
-  const [clips, setClips] = useState<Clip[]>([]);
   // null = folder grid view; ALL_CLIPS = "All clips" virtual folder; else folder UUID
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
   const [fileQuery, setFileQuery] = useState("");
 
+  // Read clips directly from the media pool instead of fetching from the API
+  const mediaPool = useMediaPool();
+  const clips = mediaPool.videos;
+
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      const [foldersRes, clipsRes] = await Promise.all([
-        fetch(`/api/products/${productId}/folders`),
-        fetch(`/api/products/${productId}/clips`),
-      ]);
+      const foldersRes = await fetch(`/api/products/${productId}/folders`);
       if (cancelled) return;
       if (foldersRes.ok) setFolders(await foldersRes.json());
-      if (clipsRes.ok) setClips(await clipsRes.json());
     }
     load().catch(() => {});
     return () => {
@@ -50,9 +41,9 @@ export function LibraryPanel({ productId }: LibraryPanelProps) {
     if (res.ok) setFolders(await res.json());
   }
 
-  async function refreshClips() {
-    const res = await fetch(`/api/products/${productId}/clips`);
-    if (res.ok) setClips(await res.json());
+  // Clips come from mediaPool.videos — no separate refresh needed
+  function refreshClips() {
+    // no-op: clip list is derived from the media pool, which is updated by the uploader
   }
 
   async function handleCreateFolder(name: string) {
@@ -76,14 +67,9 @@ export function LibraryPanel({ productId }: LibraryPanelProps) {
   async function handleDeleteFolder(id: string) {
     const res = await fetch(`/api/products/${productId}/folders/${id}`, { method: "DELETE" });
     if (!res.ok) return;
-    const { deletedClipIds } = await res.json();
-    if (deletedClipIds?.length) {
-      const { deleteProductClips } = await import("@/lib/clip-storage");
-      await deleteProductClips(deletedClipIds);
-    }
+    // TODO(Phase 7): evict deleted clips from mediaPool when clip-upload.tsx is removed
     if (activeFolderId === id) setActiveFolderId(null);
     await refreshFolders();
-    await refreshClips();
   }
 
   if (activeFolderId === null) {

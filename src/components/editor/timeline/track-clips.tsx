@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
-import { getThumbnail } from "@/lib/clip-storage";
+import { useMediaPool } from "@/state/media-pool";
 import type { MatchedSection } from "@/lib/auto-match";
 
 interface TrackClipsProps {
@@ -64,20 +63,9 @@ function ClipThumb({
   trimDurationMs?: number | undefined;
   sectionMs: number;
 }) {
-  const [src, setSrc] = useState<string | null>(null);
-  useEffect(() => {
-    let url: string | null = null;
-    let active = true;
-    getThumbnail(thumbKey).then((buf) => {
-      if (!active || !buf) return;
-      url = URL.createObjectURL(new Blob([buf], { type: "image/jpeg" }));
-      setSrc(url);
-    });
-    return () => {
-      active = false;
-      if (url) URL.revokeObjectURL(url);
-    };
-  }, [thumbKey]);
+  const mediaPool = useMediaPool();
+  // Synchronous lookup — pool manages URL lifetime, no cleanup needed
+  const src = mediaPool.getFileURL(thumbKey);
 
   const isTrim = trimDurationMs != null;
   const tooltip = isTrim
@@ -86,7 +74,10 @@ function ClipThumb({
 
   return (
     <div className="relative flex-1 min-w-0 bg-black/40" title={tooltip}>
-      {src && <img src={src} alt="" className="absolute inset-0 w-full h-full object-cover" />}
+      {src && (
+        // Video shows first frame automatically when paused/not playing
+        <video src={src} preload="metadata" muted playsInline className="absolute inset-0 w-full h-full object-cover" />
+      )}
       {isTrim ? (
         <span className="absolute bottom-0 right-0 bg-black/70 text-white text-[8px] px-1">
           1× ✂
