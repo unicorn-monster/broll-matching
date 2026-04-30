@@ -1,9 +1,11 @@
 // src/components/editor/editor-shell.tsx
 "use client";
 
-import { useEffect } from "react";
-import { RotateCcw } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Trash2 } from "lucide-react";
 import { useBuildState } from "@/components/build/build-state-context";
+import { useMediaPool } from "@/state/media-pool";
+import { DeleteFolderDialog } from "@/components/broll/delete-folder-dialog";
 import { AudioPill } from "./toolbar/audio-pill";
 import { ScriptPill } from "./toolbar/script-pill";
 import { ExportButton } from "./toolbar/export-button";
@@ -29,7 +31,13 @@ export function EditorShell() {
     setPreviewClipKey,
     inspectorMode,
     selectedOverlayId,
+    audioFile,
+    setAudio,
+    countOverlaysUsingClips,
+    removeOverlaysReferencingClips,
   } = useBuildState();
+  const mediaPool = useMediaPool();
+  const [clearAllOpen, setClearAllOpen] = useState(false);
 
   useEffect(() => {
     if (previewClipKey === null) return;
@@ -56,12 +64,13 @@ export function EditorShell() {
       <div className="col-span-3 row-start-1 flex items-center gap-3 px-3 border-b border-border bg-muted/30 text-sm">
         <button
           type="button"
-          onClick={() => window.location.reload()}
-          className="text-muted-foreground hover:text-foreground"
-          aria-label="Back to folder picker"
-          title="Back to folder picker"
+          onClick={() => setClearAllOpen(true)}
+          className="text-muted-foreground hover:text-destructive"
+          aria-label="Clear all"
+          title="Clear all (delete all folders + audio)"
+          disabled={mediaPool.folders.length === 0 && !audioFile}
         >
-          <RotateCcw className="w-4 h-4" />
+          <Trash2 className="w-4 h-4" />
         </button>
         <span className="text-muted-foreground/70 font-mono text-xs truncate max-w-[200px]">
           B-roll Editor
@@ -99,6 +108,29 @@ export function EditorShell() {
       <AudioDialog open={audioDialogOpen} onOpenChange={setAudioDialogOpen} />
       <ScriptDialog open={scriptDialogOpen} onOpenChange={setScriptDialogOpen} />
       <ExportDialog open={exportDialogOpen} onOpenChange={setExportDialogOpen} />
+
+      {clearAllOpen ? (() => {
+        const allClipIds = mediaPool.videos.map((v) => v.id);
+        const usedCount = countOverlaysUsingClips(allClipIds);
+        return (
+          <DeleteFolderDialog
+            open
+            onOpenChange={setClearAllOpen}
+            bulk
+            folderName="all folders"
+            folderCount={mediaPool.folders.length}
+            clipCount={mediaPool.videos.length}
+            audioCount={audioFile ? 1 : 0}
+            usedCount={usedCount}
+            onConfirm={async () => {
+              removeOverlaysReferencingClips(allClipIds);
+              await mediaPool.reset();
+              void setAudio(null, null);
+              setClearAllOpen(false);
+            }}
+          />
+        );
+      })() : null}
     </div>
     </OverlayDragProvider>
   );
