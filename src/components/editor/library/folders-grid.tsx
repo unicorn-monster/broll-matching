@@ -1,6 +1,6 @@
 "use client";
 
-import { Folder, FolderPlus, Layers, MoreVertical, Pencil, Search, Trash2 } from "lucide-react";
+import { Folder, FolderPlus, MoreVertical, Pencil, Search, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { filterFoldersByName } from "@/lib/folder-filter";
@@ -14,36 +14,30 @@ export interface FolderTile {
 interface FoldersGridProps {
   folders: FolderTile[];
   totalClipCount: number;
-  onSelect: (folderId: string | null) => void;
-  onCreate: (name: string) => Promise<void> | void;
+  onSelectAll: () => void;
+  onSelectFolder: (folderId: string) => void;
+  onAdd: () => void;
   onRename: (id: string, name: string) => Promise<void> | void;
   onDelete: (id: string) => Promise<void> | void;
+  busyAdding?: boolean;
+  busyProgress?: { done: number; total: number } | null;
 }
 
 export function FoldersGrid({
   folders,
   totalClipCount,
-  onSelect,
-  onCreate,
+  onSelectAll,
+  onSelectFolder,
+  onAdd,
   onRename,
   onDelete,
+  busyAdding,
+  busyProgress,
 }: FoldersGridProps) {
-  const [creating, setCreating] = useState(false);
-  const [newName, setNewName] = useState("");
   const [query, setQuery] = useState("");
 
   const visibleFolders = filterFoldersByName(folders, query);
-
-  async function handleCreate() {
-    const trimmed = newName.trim();
-    if (!trimmed) {
-      setCreating(false);
-      return;
-    }
-    await onCreate(trimmed);
-    setNewName("");
-    setCreating(false);
-  }
+  const showEmptyHint = folders.length === 0;
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -65,22 +59,26 @@ export function FoldersGrid({
         </div>
         <button
           type="button"
-          onClick={() => setCreating(true)}
-          className="inline-flex items-center gap-1 px-2 py-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground shrink-0"
-          aria-label="New folder"
+          onClick={onAdd}
+          disabled={busyAdding}
+          className="inline-flex items-center gap-1 px-2 py-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground shrink-0 disabled:opacity-50 disabled:pointer-events-none"
+          aria-label="Add folder"
         >
-          <FolderPlus className="w-3.5 h-3.5" /> New
+          <FolderPlus className="w-3.5 h-3.5" />
+          {busyAdding && busyProgress
+            ? `Adding ${busyProgress.done}/${busyProgress.total}…`
+            : "Add Folder"}
         </button>
       </div>
 
       <div className="flex-1 overflow-y-auto p-3">
         <div className="grid grid-cols-3 gap-3">
           <FolderTileCard
-            icon={<Layers className="w-10 h-10" />}
+            icon={<Folder className="w-10 h-10 fill-muted text-muted-foreground" />}
             name="All clips"
             count={totalClipCount}
             tone="neutral"
-            onClick={() => onSelect(null)}
+            onClick={onSelectAll}
           />
 
           {visibleFolders.map((f) => (
@@ -90,35 +88,21 @@ export function FoldersGrid({
               name={f.name}
               count={f.clipCount}
               tone="yellow"
-              onClick={() => onSelect(f.id)}
+              onClick={() => onSelectFolder(f.id)}
               onRename={async () => {
                 const next = prompt("Rename folder", f.name);
                 if (next && next.trim() && next.trim() !== f.name) await onRename(f.id, next.trim());
               }}
-              onDelete={async () => {
-                if (confirm(`Delete folder "${f.name}" and all its clips?`)) await onDelete(f.id);
-              }}
+              onDelete={async () => onDelete(f.id)}
             />
           ))}
-
-          {creating && (
-            <div className="flex flex-col items-center gap-1 p-2 rounded-md border border-dashed border-border bg-muted/30">
-              <Folder className="w-10 h-10 fill-yellow-400 text-yellow-500" />
-              <input
-                autoFocus
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleCreate();
-                  if (e.key === "Escape") { setCreating(false); setNewName(""); }
-                }}
-                onBlur={handleCreate}
-                placeholder="Folder name"
-                className="w-full px-1 py-0.5 text-xs text-center bg-background border border-border rounded"
-              />
-            </div>
-          )}
         </div>
+
+        {showEmptyHint && (
+          <p className="mt-4 text-xs text-muted-foreground text-center">
+            Click <span className="font-medium">Add Folder</span> to upload your first folder.
+          </p>
+        )}
       </div>
     </div>
   );
@@ -140,7 +124,7 @@ function FolderTileCard({ icon, name, count, tone, onClick, onRename, onDelete }
   return (
     <div
       className={cn(
-        "relative group rounded-md border p-2 flex flex-col items-center gap-1 cursor-pointer transition",
+        "relative group rounded-md border p-2 flex flex-col items-center gap-1 cursor-pointer transition aspect-square justify-center",
         tone === "yellow"
           ? "border-border hover:border-yellow-500/60 hover:bg-yellow-500/5"
           : "border-border hover:border-foreground/30 hover:bg-muted/40",
