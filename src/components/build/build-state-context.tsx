@@ -1,7 +1,7 @@
 // src/components/build/build-state-context.tsx
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { MutableRefObject } from "react";
 import type { MatchedSection } from "@/lib/auto-match";
 import type { ParsedSection } from "@/lib/script-parser";
@@ -37,6 +37,8 @@ interface BuildState {
   setOverlays: (next: OverlayItem[] | ((prev: OverlayItem[]) => OverlayItem[])) => void;
   selectedOverlayId: string | null;
   setSelectedOverlayId: (id: string | null) => void;
+  countOverlaysUsingClips: (clipIds: string[]) => number;
+  removeOverlaysReferencingClips: (clipIds: string[]) => number;
   audioSelected: boolean;
   setAudioSelected: (v: boolean) => void;
 
@@ -87,10 +89,59 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
     [],
   );
 
-  function setAudio(file: File | null, duration: number | null) {
+  const countOverlaysUsingClips = useCallback(
+    (clipIds: string[]) => {
+      const set = new Set(clipIds);
+      return overlays.filter((o) => set.has(o.clipId)).length;
+    },
+    [overlays],
+  );
+
+  const removeOverlaysReferencingClips = useCallback(
+    (clipIds: string[]) => {
+      const set = new Set(clipIds);
+      let removed = 0;
+      setOverlaysState((prev) => {
+        const next = prev.filter((o) => {
+          if (set.has(o.clipId)) { removed++; return false; }
+          return true;
+        });
+        return next;
+      });
+      return removed;
+    },
+    [],
+  );
+
+  async function setAudio(file: File | null, duration: number | null) {
     setAudioFile(file);
     setAudioDuration(duration);
+    const { putAudio, clearAudio } = await import("@/lib/media-storage");
+    if (file) {
+      await putAudio({
+        id: "current",
+        blob: file,
+        type: file.type,
+        filename: file.name,
+        durationMs: duration ?? 0,
+      });
+    } else {
+      await clearAudio();
+    }
   }
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { getAudio } = await import("@/lib/media-storage");
+      const rec = await getAudio();
+      if (cancelled || !rec) return;
+      const file = new File([rec.blob], rec.filename, { type: rec.type });
+      setAudioFile(file);
+      setAudioDuration(rec.durationMs);
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   function onParsed(s: ParsedSection[], t: MatchedSection[]) {
     setSections(s);
@@ -145,6 +196,8 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
       setOverlays,
       selectedOverlayId,
       setSelectedOverlayId,
+      countOverlaysUsingClips,
+      removeOverlaysReferencingClips,
       audioSelected,
       setAudioSelected,
       inspectorMode,
