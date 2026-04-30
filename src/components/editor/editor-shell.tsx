@@ -2,8 +2,7 @@
 "use client";
 
 import { useEffect } from "react";
-import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 import { useBuildState } from "@/components/build/build-state-context";
 import { AudioPill } from "./toolbar/audio-pill";
 import { ScriptPill } from "./toolbar/script-pill";
@@ -18,11 +17,7 @@ import { OverlayDragProvider } from "./overlay/overlay-drag-context";
 import { OverlayInspector } from "./overlay/overlay-inspector";
 import { AudioInspector } from "./audio/audio-inspector";
 
-interface EditorShellProps {
-  productId: string;
-}
-
-export function EditorShell({ productId }: EditorShellProps) {
+export function EditorShell() {
   const {
     audioDialogOpen,
     setAudioDialogOpen,
@@ -59,11 +54,17 @@ export function EditorShell({ productId }: EditorShellProps) {
       }}
     >
       <div className="col-span-3 row-start-1 flex items-center gap-3 px-3 border-b border-border bg-muted/30 text-sm">
-        <Link href="/dashboard" className="text-muted-foreground hover:text-foreground" aria-label="Back to projects">
-          <ChevronLeft className="w-4 h-4" />
-        </Link>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="text-muted-foreground hover:text-foreground"
+          aria-label="Back to folder picker"
+          title="Back to folder picker"
+        >
+          <RotateCcw className="w-4 h-4" />
+        </button>
         <span className="text-muted-foreground/70 font-mono text-xs truncate max-w-[200px]">
-          {productId}
+          B-roll Editor
         </span>
         <div className="flex items-center gap-2">
           <AudioPill />
@@ -75,7 +76,7 @@ export function EditorShell({ productId }: EditorShellProps) {
       </div>
 
       <div className="row-start-2 col-start-1 border-r border-border overflow-hidden">
-        <LibraryPanel productId={productId} />
+        <LibraryPanel />
       </div>
       <div className="row-start-2 col-start-2 overflow-hidden bg-black/30">
         <PreviewPlayer />
@@ -96,7 +97,7 @@ export function EditorShell({ productId }: EditorShellProps) {
       </div>
 
       <AudioDialog open={audioDialogOpen} onOpenChange={setAudioDialogOpen} />
-      <ScriptDialog open={scriptDialogOpen} onOpenChange={setScriptDialogOpen} productId={productId} />
+      <ScriptDialog open={scriptDialogOpen} onOpenChange={setScriptDialogOpen} />
       <ExportDialog open={exportDialogOpen} onOpenChange={setExportDialogOpen} />
     </div>
     </OverlayDragProvider>
