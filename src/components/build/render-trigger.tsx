@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { getClip } from "@/lib/clip-storage";
+import { useMediaPool } from "@/state/media-pool";
+import { OutputSizeSelect, type OutputSize, isValidSize } from "@/components/render/output-size-select";
 import type { MatchedSection } from "@/lib/auto-match";
 
 interface RenderTriggerProps {
@@ -24,6 +25,8 @@ export function RenderTrigger({ audioFile, timeline }: RenderTriggerProps) {
   const engineReadyRef = useRef(false);
   const startedAtRef = useRef<number | null>(null);
   const workerRef = useRef<Worker | null>(null);
+  const mediaPool = useMediaPool();
+  const [outputSize, setOutputSize] = useState<OutputSize>({ width: 1080, height: 1350 });
 
   useEffect(() => {
     const worker = new Worker(new URL("@/workers/render-worker.ts", import.meta.url), { type: "module" });
@@ -115,16 +118,16 @@ export function RenderTrigger({ audioFile, timeline }: RenderTriggerProps) {
     );
     const clips: Record<string, ArrayBuffer> = {};
     for (const key of keys) {
-      const buf = await getClip(key);
-      if (buf) clips[key] = buf;
+      const file = mediaPool.getFile(key);
+      if (file) clips[key] = await file.arrayBuffer();
     }
 
     const audioBuffer = await audioFile.arrayBuffer();
 
-    worker.postMessage({ cmd: "render", timeline, audioBuffer, clips }, [
-      audioBuffer,
-      ...Object.values(clips),
-    ]);
+    worker.postMessage(
+      { cmd: "render", timeline, audioBuffer, clips, outputWidth: outputSize.width, outputHeight: outputSize.height },
+      [audioBuffer, ...Object.values(clips)],
+    );
   }
 
   const label = stage === "loading" ? "Loading render engine…" : "Rendering video…";
@@ -160,7 +163,13 @@ export function RenderTrigger({ audioFile, timeline }: RenderTriggerProps) {
           )}
         </div>
       )}
-      <Button onClick={startRender} disabled={rendering} className="w-full" size="lg">
+      <OutputSizeSelect value={outputSize} onChange={setOutputSize} />
+      <Button
+        onClick={startRender}
+        disabled={rendering || !isValidSize(outputSize)}
+        className="w-full"
+        size="lg"
+      >
         {rendering ? "Rendering…" : "Render Video"}
       </Button>
     </div>
