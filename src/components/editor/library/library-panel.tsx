@@ -1,10 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { ArrowLeft } from "lucide-react";
 import { filterClipsByQuery } from "@/lib/clip-filter";
 import { useMediaPool } from "@/state/media-pool";
 import { ClipGrid } from "@/components/broll/clip-grid";
-import { FolderSidebar, type Folder } from "@/components/broll/folder-sidebar";
+import { FoldersGrid, type FolderTile } from "@/components/editor/library/folders-grid";
 import { InvalidFilesDialog, type SkippedItem } from "@/components/broll/invalid-files-dialog";
 import {
   DuplicateFolderDialog,
@@ -30,19 +31,19 @@ interface InvalidDialogState {
 }
 
 interface DeleteDialogState {
-  bulk: boolean;
-  folderId?: string;
+  folderId: string;
   folderName: string;
   clipCount: number;
   usedCount: number;
-  audioCount?: number;
-  folderCount?: number;
 }
+
+type View = "folders" | "clips";
 
 export function LibraryPanel() {
   const mediaPool = useMediaPool();
   const buildState = useBuildState();
   const [fileQuery, setFileQuery] = useState("");
+  const [view, setView] = useState<View>("folders");
   const [busyAdding, setBusyAdding] = useState(false);
   const [busyProgress, setBusyProgress] = useState<{ done: number; total: number } | null>(null);
 
@@ -50,7 +51,7 @@ export function LibraryPanel() {
   const [invalidDialog, setInvalidDialog] = useState<InvalidDialogState | null>(null);
   const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(null);
 
-  const folders: Folder[] = useMemo(
+  const folderTiles: FolderTile[] = useMemo(
     () =>
       mediaPool.folders.map((f) => ({
         id: f.id,
@@ -67,6 +68,10 @@ export function LibraryPanel() {
     return filterClipsByQuery(base, fileQuery);
   }, [mediaPool.videos, mediaPool.activeFolderId, fileQuery]);
 
+  const currentFolderName = mediaPool.activeFolderId
+    ? mediaPool.folders.find((f) => f.id === mediaPool.activeFolderId)?.name ?? "(unknown)"
+    : "All clips";
+
   async function processAdd(name: string, files: File[], options?: { mergeIntoFolderId?: string }) {
     setBusyAdding(true);
     setBusyProgress({ done: 0, total: files.length });
@@ -78,6 +83,8 @@ export function LibraryPanel() {
         toast.success(`Added ${result.added} ${result.added === 1 ? "clip" : "clips"} to "${name}"`);
       }
       mediaPool.setActiveFolderId(result.folderId);
+      setView("clips");
+      setFileQuery("");
     } finally {
       setBusyAdding(false);
       setBusyProgress(null);
@@ -133,13 +140,28 @@ export function LibraryPanel() {
     }
   }
 
+  function handleSelectAll() {
+    mediaPool.setActiveFolderId(null);
+    setFileQuery("");
+    setView("clips");
+  }
+
+  function handleSelectFolder(folderId: string) {
+    mediaPool.setActiveFolderId(folderId);
+    setFileQuery("");
+    setView("clips");
+  }
+
+  function handleBack() {
+    setView("folders");
+  }
+
   function handleDeleteRequest(folderId: string) {
     const folder = mediaPool.folders.find((f) => f.id === folderId);
     if (!folder) return;
     const folderClipIds = mediaPool.videos.filter((v) => v.folderId === folderId).map((v) => v.id);
     const usedCount = buildState.countOverlaysUsingClips(folderClipIds);
     setDeleteDialog({
-      bulk: false,
       folderId,
       folderName: folder.name,
       clipCount: folderClipIds.length,
@@ -151,54 +173,54 @@ export function LibraryPanel() {
     if (!deleteDialog) return;
     const dlg = deleteDialog;
     setDeleteDialog(null);
-    if (dlg.bulk) {
-      const allClipIds = mediaPool.videos.map((v) => v.id);
-      buildState.removeOverlaysReferencingClips(allClipIds);
-      await mediaPool.reset();
-      void buildState.setAudio(null, null);
-    } else if (dlg.folderId) {
-      const folderClipIds = mediaPool.videos
-        .filter((v) => v.folderId === dlg.folderId)
-        .map((v) => v.id);
-      buildState.removeOverlaysReferencingClips(folderClipIds);
-      await mediaPool.removeFolder(dlg.folderId);
+    const folderClipIds = mediaPool.videos
+      .filter((v) => v.folderId === dlg.folderId)
+      .map((v) => v.id);
+    buildState.removeOverlaysReferencingClips(folderClipIds);
+    await mediaPool.removeFolder(dlg.folderId);
+    if (mediaPool.activeFolderId === dlg.folderId) {
+      mediaPool.setActiveFolderId(null);
+      setView("folders");
     }
   }
 
   return (
-    <div className="h-full flex overflow-hidden">
-      <FolderSidebar
-        folders={folders}
-        activeFolderId={mediaPool.activeFolderId}
-        onSelect={mediaPool.setActiveFolderId}
-        onAdd={handleAdd}
-        onRename={mediaPool.renameFolder}
-        onDelete={handleDeleteRequest}
-        totalClipCount={mediaPool.videos.length}
-        busyAdding={busyAdding}
-        busyProgress={busyProgress}
-      />
-
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-border text-xs">
-          <span className="font-medium">Clips</span>
-          <span className="ml-auto text-muted-foreground">{visibleClips.length}</span>
-        </div>
-        <main className="flex-1 overflow-y-auto p-3 min-w-0">
-          {mediaPool.folders.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-sm text-muted-foreground gap-2">
-              <p>No clips loaded yet.</p>
-              <p>Click <span className="font-medium">+ Add Folder</span> to upload your first folder.</p>
-            </div>
-          ) : (
+    <div className="h-full flex flex-col overflow-hidden">
+      {view === "folders" ? (
+        <FoldersGrid
+          folders={folderTiles}
+          totalClipCount={mediaPool.videos.length}
+          onSelectAll={handleSelectAll}
+          onSelectFolder={handleSelectFolder}
+          onAdd={handleAdd}
+          onRename={mediaPool.renameFolder}
+          onDelete={handleDeleteRequest}
+          busyAdding={busyAdding}
+          busyProgress={busyProgress}
+        />
+      ) : (
+        <div className="h-full flex flex-col overflow-hidden">
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-border text-xs">
+            <button
+              type="button"
+              onClick={handleBack}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+              aria-label="Back to folders"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" /> Back
+            </button>
+            <span className="font-medium truncate" title={currentFolderName}>{currentFolderName}</span>
+            <span className="ml-auto text-muted-foreground">{visibleClips.length}</span>
+          </div>
+          <main className="flex-1 overflow-y-auto p-3 min-w-0">
             <ClipGrid
               clips={visibleClips}
               fileQuery={fileQuery}
               onFileQueryChange={setFileQuery}
             />
-          )}
-        </main>
-      </div>
+          </main>
+        </div>
+      )}
 
       {duplicateDialog ? (
         <DuplicateFolderDialog
@@ -229,9 +251,7 @@ export function LibraryPanel() {
           clipCount={deleteDialog.clipCount}
           usedCount={deleteDialog.usedCount}
           onConfirm={confirmDelete}
-          bulk={deleteDialog.bulk}
-          {...(deleteDialog.folderCount !== undefined ? { folderCount: deleteDialog.folderCount } : {})}
-          {...(deleteDialog.audioCount !== undefined ? { audioCount: deleteDialog.audioCount } : {})}
+          bulk={false}
         />
       ) : null}
     </div>
