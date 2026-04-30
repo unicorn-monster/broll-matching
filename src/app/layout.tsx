@@ -3,6 +3,7 @@ import "./globals.css";
 import { SiteHeader } from "@/components/site-header";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
+import { MediaPoolProvider } from "@/state/media-pool";
 import type { Metadata } from "next";
 
 const geistSans = Geist({
@@ -97,7 +98,9 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <SiteHeader />
-          <main id="main-content">{children}</main>
+          <MediaPoolProvider>
+            <main id="main-content">{children}</main>
+          </MediaPoolProvider>
           <Toaster richColors position="top-right" />
         </ThemeProvider>
       </body>
