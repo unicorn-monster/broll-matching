@@ -87,7 +87,6 @@ describe("FolderPicker integration", () => {
         durationMs: 5000,
         fileId,
         folderId: "local",
-        productId: "local",
         filename,
         width: 1920,
         height: 1080,

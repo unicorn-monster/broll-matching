@@ -16,7 +16,6 @@ const makeClip = (brollName: string, durationMs: number) => ({
   durationMs,
   fileId: brollName,
   folderId: "f1",
-  productId: "p1",
   filename: `${brollName}.mp4`,
   width: 1080,
   height: 1350,

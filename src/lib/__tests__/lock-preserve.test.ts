@@ -10,7 +10,6 @@ const makeClip = (id: string, brollName: string, durationMs: number): ClipMetada
   durationMs,
   fileId: id,
   folderId: "f1",
-  productId: "p1",
   filename: `${brollName}.mp4`,
   width: 1080,
   height: 1350,

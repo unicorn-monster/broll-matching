@@ -52,7 +52,6 @@ export function FolderPicker({ onLoaded }: Props) {
               durationMs: meta.durationMs,
               fileId,
               folderId: "local",
-              productId: "local",
               filename: file.name,
               width: meta.width,
               height: meta.height,

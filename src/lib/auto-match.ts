@@ -57,7 +57,6 @@ export interface ClipMetadata {
   durationMs: number;
   fileId: string;
   folderId: string;
-  productId: string;
   filename: string;
   width: number;
   height: number;
