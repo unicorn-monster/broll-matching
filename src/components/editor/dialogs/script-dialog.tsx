@@ -1,7 +1,7 @@
 // src/components/editor/dialogs/script-dialog.tsx
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useMemo, useRef } from "react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -14,46 +14,32 @@ import {
 import { Button } from "@/components/ui/button";
 import { ScriptPaste } from "@/components/build/script-paste";
 import { useBuildState } from "@/components/build/build-state-context";
-import { deriveBaseName } from "@/lib/broll";
-import { buildClipsByBaseName, type ClipMetadata, type MatchedSection } from "@/lib/auto-match";
+import { useMediaPool } from "@/state/media-pool";
+import { buildClipsByBaseName, type MatchedSection } from "@/lib/auto-match";
 import { preserveLocks } from "@/lib/lock-preserve";
 import type { ParsedSection } from "@/lib/script-parser";
 
 interface ScriptDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  productId: string;
 }
 
-export function ScriptDialog({ open, onOpenChange, productId }: ScriptDialogProps) {
+export function ScriptDialog({ open, onOpenChange }: ScriptDialogProps) {
   const { scriptText, setScriptText, timeline, onParsed, setTimeline } = useBuildState();
-  const [availableBaseNames, setAvailableBaseNames] = useState<Set<string>>(new Set());
-  // Tracks the in-flight clip fetch so a stale resolution can't overwrite newer state
-  // when the dialog is rapidly reopened or handleParsed is called twice.
+  const mediaPool = useMediaPool();
+
+  // Derive available base names directly from the media pool — no API fetch needed
+  const availableBaseNames = useMemo(
+    () => new Set(mediaPool.videos.map((v) => v.baseName)),
+    [mediaPool.videos],
+  );
+
+  // Tracks the in-flight parse so a stale resolution can't overwrite newer state
+  // when handleParsed is called twice in quick succession.
   const inFlightRef = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    fetch(`/api/products/${productId}/clips`)
-      .then((r) => {
-        if (!r.ok || cancelled) return;
-        return r.json();
-      })
-      .then((clips: { brollName: string }[] | undefined) => {
-        if (cancelled || !clips) return;
-        setAvailableBaseNames(new Set(clips.map((c) => deriveBaseName(c.brollName))));
-      })
-      .catch(() => {
-        // Silent — availableBaseNames stays empty; ScriptPaste still works without hints
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [productId, open]);
-
   async function handleParsed(newSections: ParsedSection[], freshTimeline: MatchedSection[]) {
-    // Cancel any prior in-flight handleParsed fetch so its late resolution can't
+    // Cancel any prior in-flight handleParsed so its late resolution can't
     // clobber a newer parse (e.g., user pastes twice in quick succession).
     inFlightRef.current?.abort();
     const ctrl = new AbortController();
@@ -65,22 +51,11 @@ export function ScriptDialog({ open, onOpenChange, productId }: ScriptDialogProp
       onOpenChange(false);
       return;
     }
-    const clipsRes = await fetch(`/api/products/${productId}/clips`);
+
     if (ctrl.signal.aborted) return;
-    if (!clipsRes.ok) {
-      onParsed(newSections, freshTimeline);
-      onOpenChange(false);
-      return;
-    }
-    interface RawClip { brollName: string; createdAt: string; [key: string]: unknown }
-    const rawClips: RawClip[] = await clipsRes.json();
-    if (ctrl.signal.aborted) return;
-    const clips: ClipMetadata[] = rawClips.map((c) => ({
-      ...c,
-      baseName: deriveBaseName(c.brollName),
-      createdAt: new Date(c.createdAt),
-    }) as ClipMetadata);
-    const map = buildClipsByBaseName(clips);
+
+    // Build clip map from the media pool — no API call needed
+    const map = buildClipsByBaseName(mediaPool.videos);
     const oldSnapshot = timeline!;
     const result = preserveLocks(timeline!, newSections, map);
     onParsed(newSections, result.newTimeline);
