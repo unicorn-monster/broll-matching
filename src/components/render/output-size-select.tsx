@@ -1,7 +1,5 @@
 "use client";
 
-import { useState } from "react";
-
 export interface OutputSize {
   width: number;
   height: number;
@@ -29,19 +27,16 @@ export function OutputSizeSelect({ value, onChange }: Props) {
   const matchedPreset = PRESETS.find(
     (p) => p.size.width === value.width && p.size.height === value.height,
   );
-  const [mode, setMode] = useState<"preset" | "custom">(matchedPreset ? "preset" : "custom");
+  const mode = matchedPreset ? "preset" : "custom";
 
   return (
     <div className="space-y-2">
       <select
-        value={mode === "preset" && matchedPreset ? matchedPreset.label : "custom"}
+        value={matchedPreset ? matchedPreset.label : "custom"}
         onChange={(e) => {
-          if (e.target.value === "custom") {
-            setMode("custom");
-          } else {
+          if (e.target.value !== "custom") {
             const p = PRESETS.find((p) => p.label === e.target.value);
             if (p) {
-              setMode("preset");
               onChange(p.size);
             }
           }
