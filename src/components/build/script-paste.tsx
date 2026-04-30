@@ -3,14 +3,13 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { parseScript, type ParsedSection } from "@/lib/script-parser";
-import { buildClipsByBaseName, matchSections, type MatchedSection, type ClipMetadata } from "@/lib/auto-match";
-import { deriveBaseName } from "@/lib/broll";
+import { buildClipsByBaseName, matchSections, type MatchedSection } from "@/lib/auto-match";
+import { useMediaPool } from "@/state/media-pool";
 
 interface ScriptPasteProps {
   text: string;
   onTextChange: (t: string) => void;
   availableBaseNames: Set<string>;
-  productId: string;
   onParsed: (sections: ParsedSection[], timeline: MatchedSection[]) => void;
 }
 
@@ -61,7 +60,8 @@ function buildLineStatuses(text: string, result: ParsedResult): LineStatus[] {
   return statuses;
 }
 
-export function ScriptPaste({ text, onTextChange, availableBaseNames, productId, onParsed }: ScriptPasteProps) {
+export function ScriptPaste({ text, onTextChange, availableBaseNames, onParsed }: ScriptPasteProps) {
+  const mediaPool = useMediaPool();
   const [parsedResult, setParsedResult] = useState<ParsedResult | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -75,13 +75,7 @@ export function ScriptPaste({ text, onTextChange, availableBaseNames, productId,
 
     setLoading(true);
     try {
-      const clipsRes = await fetch(`/api/products/${productId}/clips`);
-      const rawClips = await clipsRes.json();
-      const clips: ClipMetadata[] = rawClips.map((c: any) => ({
-        ...c,
-        baseName: deriveBaseName(c.brollName),
-        createdAt: new Date(c.createdAt),
-      }));
+      const clips = mediaPool.videos;
       const clipsByBaseName = buildClipsByBaseName(clips);
       const timeline = matchSections(result.sections, clipsByBaseName);
       setParsedResult({ sections: result.sections, timeline, errors: [], warnings: result.warnings });

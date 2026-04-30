@@ -111,7 +111,6 @@ export function ScriptDialog({ open, onOpenChange, productId }: ScriptDialogProp
           text={scriptText}
           onTextChange={setScriptText}
           availableBaseNames={availableBaseNames}
-          productId={productId}
           onParsed={handleParsed}
         />
         <DialogFooter>
