@@ -17,6 +17,18 @@ export function extractVideoMetadata(file: File): Promise<VideoMetadata> {
     };
 
     const onLoad = () => {
+      // Livestreams and malformed files can produce non-finite durations.
+      if (!Number.isFinite(video.duration)) {
+        cleanup();
+        reject(new Error(`Invalid duration for ${file.name}`));
+        return;
+      }
+      // Corrupt headers can leave dimensions at zero.
+      if (video.videoWidth <= 0 || video.videoHeight <= 0) {
+        cleanup();
+        reject(new Error(`Invalid dimensions for ${file.name}`));
+        return;
+      }
       const meta = {
         durationMs: Math.round(video.duration * 1000),
         width: video.videoWidth,

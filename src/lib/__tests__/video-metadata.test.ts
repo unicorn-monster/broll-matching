@@ -36,4 +36,32 @@ describe("extractVideoMetadata", () => {
 
     await expect(extractVideoMetadata(fakeFile)).rejects.toThrow();
   });
+
+  it("rejects when duration is Infinity", async () => {
+    const fakeFile = new File(["x"], "live.mp4", { type: "video/mp4" });
+    Object.defineProperty(global.HTMLVideoElement.prototype, "src", {
+      configurable: true,
+      set(this: HTMLVideoElement) {
+        Object.defineProperty(this, "duration", { value: Infinity, configurable: true });
+        Object.defineProperty(this, "videoWidth", { value: 1920, configurable: true });
+        Object.defineProperty(this, "videoHeight", { value: 1080, configurable: true });
+        queueMicrotask(() => this.dispatchEvent(new Event("loadedmetadata")));
+      },
+    });
+    await expect(extractVideoMetadata(fakeFile)).rejects.toThrow("Invalid duration");
+  });
+
+  it("rejects when dimensions are 0", async () => {
+    const fakeFile = new File(["x"], "corrupt.mp4", { type: "video/mp4" });
+    Object.defineProperty(global.HTMLVideoElement.prototype, "src", {
+      configurable: true,
+      set(this: HTMLVideoElement) {
+        Object.defineProperty(this, "duration", { value: 3.0, configurable: true });
+        Object.defineProperty(this, "videoWidth", { value: 0, configurable: true });
+        Object.defineProperty(this, "videoHeight", { value: 0, configurable: true });
+        queueMicrotask(() => this.dispatchEvent(new Event("loadedmetadata")));
+      },
+    });
+    await expect(extractVideoMetadata(fakeFile)).rejects.toThrow("Invalid dimensions");
+  });
 });
