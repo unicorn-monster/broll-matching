@@ -1,13 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Trash2, Pencil, Upload, Search, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useMediaPool } from "@/state/media-pool";
-import { deriveBaseName, isValidBrollName } from "@/lib/broll";
+import { deriveBaseName } from "@/lib/broll";
 import { formatMs } from "@/lib/format-time";
-import { ClipUpload } from "./clip-upload";
 import { useBuildState } from "@/components/build/build-state-context";
 import { useOverlayDragSource } from "@/components/editor/overlay/overlay-drag-source";
 
@@ -18,9 +16,6 @@ type Clip = {
 
 interface ClipGridProps {
   clips: Clip[];
-  productId: string;
-  activeFolderId: string | null;
-  onClipsChanged: () => void;
   fileQuery: string;
   onFileQueryChange: (q: string) => void;
 }
@@ -40,16 +35,9 @@ function ThumbnailImage({ clipId }: { clipId: string }) {
 interface ClipTileProps {
   clip: Clip;
   onPreview: (key: string) => void;
-  onEdit: (id: string, name: string) => void;
-  onDelete: (clip: Clip) => void;
-  editingId: string | null;
-  editName: string;
-  setEditName: (n: string) => void;
-  onRename: (clip: Clip) => void;
-  onCancelEdit: () => void;
 }
 
-function ClipTile({ clip, onPreview, onEdit, onDelete, editingId, editName, setEditName, onRename, onCancelEdit }: ClipTileProps) {
+function ClipTile({ clip, onPreview }: ClipTileProps) {
   const dragProps = useOverlayDragSource({
     clipId: clip.id,
     fileId: clip.fileId,
@@ -71,44 +59,13 @@ function ClipTile({ clip, onPreview, onEdit, onDelete, editingId, editName, setE
         </div>
       </div>
       <div className="p-1.5">
-        {editingId === clip.id ? (
-          <div className="flex gap-1">
-            <Input
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              onClick={(e) => e.stopPropagation()}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") onRename(clip);
-                if (e.key === "Escape") onCancelEdit();
-              }}
-              autoFocus
-              className="h-6 text-xs"
-            />
-            <button onClick={(e) => { e.stopPropagation(); onRename(clip); }} className="text-xs text-green-600">✓</button>
-          </div>
-        ) : (
-          <p className="text-xs truncate font-mono">{clip.brollName}</p>
-        )}
-      </div>
-      <div className="absolute top-1 right-1 hidden group-hover:flex gap-1 bg-black/60 rounded p-0.5">
-        <button
-          onClick={(e) => { e.stopPropagation(); onEdit(clip.id, clip.brollName); }}
-          className="text-white hover:text-yellow-300"
-        >
-          <Pencil className="w-3 h-3" />
-        </button>
-        <button onClick={(e) => { e.stopPropagation(); onDelete(clip); }} className="text-white hover:text-red-400">
-          <Trash2 className="w-3 h-3" />
-        </button>
+        <p className="text-xs truncate font-mono">{clip.brollName}</p>
       </div>
     </div>
   );
 }
 
-export function ClipGrid({ clips, productId, activeFolderId, onClipsChanged, fileQuery, onFileQueryChange }: ClipGridProps) {
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editName, setEditName] = useState("");
-  const [showUpload, setShowUpload] = useState(false);
+export function ClipGrid({ clips, fileQuery, onFileQueryChange }: ClipGridProps) {
   const { setPreviewClipKey } = useBuildState();
 
   const groups = clips.reduce<Record<string, Clip[]>>((acc, clip) => {
@@ -118,54 +75,24 @@ export function ClipGrid({ clips, productId, activeFolderId, onClipsChanged, fil
     return acc;
   }, {});
 
-  async function handleDelete(clip: Clip) {
-    if (!confirm(`Delete ${clip.brollName}?`)) return;
-    const res = await fetch(`/api/products/${productId}/clips/${clip.id}`, { method: "DELETE" });
-    if (res.ok) {
-      // TODO(Phase 7): evict from mediaPool when clip-upload.tsx is removed and pool owns deletion
-      onClipsChanged();
-    }
-  }
-
-  async function handleRename(clip: Clip) {
-    if (!isValidBrollName(editName)) {
-      alert("Invalid name. Must match pattern: name-01 (lowercase, ends with -NN)");
-      return;
-    }
-    const res = await fetch(`/api/products/${productId}/clips/${clip.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ brollName: editName }),
-    });
-    if (res.ok) { setEditingId(null); onClipsChanged(); }
-    else { const d = await res.json(); alert(d.error); }
-  }
-
   return (
     <div className="space-y-6">
-      {/* Top bar: search + upload */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-          <Input
-            value={fileQuery}
-            onChange={(e) => onFileQueryChange(e.target.value)}
-            placeholder="Search clips by name..."
-            className="h-9 text-sm pl-9 pr-8"
-          />
-          {fileQuery && (
-            <button
-              onClick={() => onFileQueryChange("")}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
-        {activeFolderId && (
-          <Button variant="outline" onClick={() => setShowUpload((v) => !v)}>
-            <Upload className="w-4 h-4 mr-2" />{showUpload ? "Hide Upload" : "Upload Clips"}
-          </Button>
+      {/* Search bar */}
+      <div className="relative max-w-sm">
+        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+        <Input
+          value={fileQuery}
+          onChange={(e) => onFileQueryChange(e.target.value)}
+          placeholder="Search clips by name..."
+          className="h-9 text-sm pl-9 pr-8"
+        />
+        {fileQuery && (
+          <button
+            onClick={() => onFileQueryChange("")}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         )}
       </div>
 
@@ -176,15 +103,6 @@ export function ClipGrid({ clips, productId, activeFolderId, onClipsChanged, fil
         </p>
       )}
 
-      {/* Upload panel */}
-      {showUpload && activeFolderId && (
-        <ClipUpload
-          productId={productId}
-          folderId={activeFolderId}
-          onDone={() => { setShowUpload(false); onClipsChanged(); }}
-        />
-      )}
-
       {/* Empty states */}
       {clips.length === 0 && fileQuery.trim() && (
         <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
@@ -193,10 +111,7 @@ export function ClipGrid({ clips, productId, activeFolderId, onClipsChanged, fil
       )}
       {clips.length === 0 && !fileQuery.trim() && (
         <div className="flex flex-col items-center justify-center h-64 text-muted-foreground gap-4">
-          <p>{activeFolderId ? "No clips in this folder." : "No clips yet."}</p>
-          {activeFolderId && (
-            <Button onClick={() => setShowUpload(true)}><Upload className="w-4 h-4 mr-2" />Upload Clips</Button>
-          )}
+          <p>No clips loaded yet. Pick a folder to get started.</p>
         </div>
       )}
 
@@ -213,13 +128,6 @@ export function ClipGrid({ clips, productId, activeFolderId, onClipsChanged, fil
                 key={clip.id}
                 clip={clip}
                 onPreview={setPreviewClipKey}
-                onEdit={(id, name) => { setEditingId(id); setEditName(name); }}
-                onDelete={handleDelete}
-                editingId={editingId}
-                editName={editName}
-                setEditName={setEditName}
-                onRename={handleRename}
-                onCancelEdit={() => setEditingId(null)}
               />
             ))}
           </div>
