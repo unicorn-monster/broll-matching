@@ -5,7 +5,7 @@ import { useOverlayDrag } from "./overlay-drag-context";
 
 export interface OverlayDragSourceClip {
   clipId: string;
-  indexeddbKey: string;
+  fileId: string;
   durationMs: number;
   thumbnailUrl: string | null;
 }
@@ -28,7 +28,7 @@ export function useOverlayDragSource(clip: OverlayDragSourceClip) {
         mode: "create",
         kind: "broll-video",
         clipId: clip.clipId,
-        indexeddbKey: clip.indexeddbKey,
+        fileId: clip.fileId,
         sourceDurationMs: clip.durationMs,
         thumbnailUrl: clip.thumbnailUrl,
       });

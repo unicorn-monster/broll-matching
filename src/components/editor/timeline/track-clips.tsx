@@ -39,7 +39,7 @@ export function TrackClips({ timeline, pxPerSecond, selectedIndex, onSelect }: T
               ) : (
                 <ClipThumb
                   key={j}
-                  thumbKey={c.indexeddbKey}
+                  thumbKey={c.fileId}
                   speedFactor={c.speedFactor}
                   trimDurationMs={c.trimDurationMs}
                   sectionMs={section.durationMs}

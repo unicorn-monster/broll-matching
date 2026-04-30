@@ -146,7 +146,7 @@ export function ClipUpload({ productId, folderId, onDone }: ClipUploadProps) {
             durationMs: duration,
             width: 1080,
             height: 1350,
-            indexeddbKey: clipId,
+            fileId: clipId,
             fileSizeBytes: videoData.byteLength,
           }),
         });

@@ -13,7 +13,7 @@ export interface OverlayBase {
 export interface BrollVideoOverlay extends OverlayBase {
   kind: "broll-video";
   clipId: string;
-  indexeddbKey: string;
+  fileId: string;
   sourceStartMs: number;
   sourceDurationMs: number;
 }

@@ -37,7 +37,7 @@ export async function POST(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
   const body = await req.json();
-  const { brollName, filename, durationMs, width, height, indexeddbKey, fileSizeBytes } = body;
+  const { brollName, filename, durationMs, width, height, fileId, fileSizeBytes } = body;
 
   if (!isValidBrollName(brollName)) {
     return NextResponse.json(
@@ -49,7 +49,7 @@ export async function POST(
   try {
     const [clip] = await db
       .insert(clips)
-      .values({ productId: id, folderId, brollName, filename, durationMs, width, height, indexeddbKey, fileSizeBytes })
+      .values({ productId: id, folderId, brollName, filename, durationMs, width, height, fileId, fileSizeBytes })
       .returning();
     return NextResponse.json(clip, { status: 201 });
   } catch (err) {

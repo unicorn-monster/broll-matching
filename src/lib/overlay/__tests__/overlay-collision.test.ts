@@ -13,7 +13,7 @@ const make = (id: string, trackIndex: number, startMs: number, durationMs: numbe
   fadeInMs: 0,
   fadeOutMs: 0,
   clipId: "c",
-  indexeddbKey: "k",
+  fileId: "k",
   sourceStartMs: 0,
   sourceDurationMs: durationMs,
 });

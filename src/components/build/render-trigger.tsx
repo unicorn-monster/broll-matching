@@ -111,7 +111,7 @@ export function RenderTrigger({ audioFile, timeline }: RenderTriggerProps) {
     setProgress(0);
 
     const keys = new Set(
-      timeline.flatMap((s) => s.clips.filter((c) => !c.isPlaceholder).map((c) => c.indexeddbKey)),
+      timeline.flatMap((s) => s.clips.filter((c) => !c.isPlaceholder).map((c) => c.fileId)),
     );
     const clips: Record<string, ArrayBuffer> = {};
     for (const key of keys) {

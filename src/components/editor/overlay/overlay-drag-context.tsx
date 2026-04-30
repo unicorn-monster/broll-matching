@@ -6,7 +6,7 @@ export interface CreateDragInfo {
   mode: "create";
   kind: "broll-video";
   clipId: string;
-  indexeddbKey: string;
+  fileId: string;
   sourceDurationMs: number;
   thumbnailUrl: string | null;
 }

@@ -80,23 +80,23 @@ export function PreviewPlayer() {
         for (const section of timeline) {
           for (const c of section.clips) {
             if (c.isPlaceholder) continue;
-            if (clipUrlsRef.current.has(c.indexeddbKey)) continue;
-            const buf = await getClip(c.indexeddbKey);
+            if (clipUrlsRef.current.has(c.fileId)) continue;
+            const buf = await getClip(c.fileId);
             if (cancelled || !buf) continue;
             const url = URL.createObjectURL(new Blob([buf], { type: "video/mp4" }));
-            clipUrlsRef.current.set(c.indexeddbKey, url);
-            additions.set(c.indexeddbKey, url);
+            clipUrlsRef.current.set(c.fileId, url);
+            additions.set(c.fileId, url);
           }
         }
       }
       for (const o of overlays) {
         if (o.kind !== "broll-video") continue;
-        if (clipUrlsRef.current.has(o.indexeddbKey)) continue;
-        const buf = await getClip(o.indexeddbKey);
+        if (clipUrlsRef.current.has(o.fileId)) continue;
+        const buf = await getClip(o.fileId);
         if (cancelled || !buf) continue;
         const url = URL.createObjectURL(new Blob([buf], { type: "video/mp4" }));
-        clipUrlsRef.current.set(o.indexeddbKey, url);
-        additions.set(o.indexeddbKey, url);
+        clipUrlsRef.current.set(o.fileId, url);
+        additions.set(o.fileId, url);
       }
       if (!cancelled && additions.size > 0) {
         setClipUrls((prev) => {
@@ -170,7 +170,7 @@ export function PreviewPlayer() {
 
         if (o.kind !== "broll-video") continue;
 
-        const url = clipUrlsRef.current.get(o.indexeddbKey);
+        const url = clipUrlsRef.current.get(o.fileId);
         if (!url) continue;
         if (el.src !== url && el.currentSrc !== url) el.src = url;
 

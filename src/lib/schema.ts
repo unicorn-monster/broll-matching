@@ -54,7 +54,7 @@ export const clips = pgTable(
     durationMs: integer("duration_ms").notNull(),
     width: integer("width").notNull(),
     height: integer("height").notNull(),
-    indexeddbKey: varchar("indexeddb_key", { length: 255 }).notNull(),
+    fileId: varchar("indexeddb_key", { length: 255 }).notNull(),
     fileSizeBytes: bigint("file_size_bytes", { mode: "number" }).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },

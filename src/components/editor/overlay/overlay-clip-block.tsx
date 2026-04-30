@@ -30,7 +30,7 @@ export function OverlayClipBlock({
     let active = true;
     let url: string | null = null;
     if (overlay.kind === "broll-video") {
-      getThumbnail(overlay.indexeddbKey).then((buf) => {
+      getThumbnail(overlay.fileId).then((buf) => {
         if (!active || !buf) return;
         url = URL.createObjectURL(new Blob([buf], { type: "image/jpeg" }));
         setThumbUrl(url);

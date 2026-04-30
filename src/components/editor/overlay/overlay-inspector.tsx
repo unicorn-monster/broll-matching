@@ -20,7 +20,7 @@ export function OverlayInspector({ overlayId }: OverlayInspectorProps) {
     if (!overlay || overlay.kind !== "broll-video") return;
     let url: string | null = null;
     let active = true;
-    getThumbnail(overlay.indexeddbKey).then((buf) => {
+    getThumbnail(overlay.fileId).then((buf) => {
       if (!active || !buf) return;
       url = URL.createObjectURL(new Blob([buf], { type: "image/jpeg" }));
       setThumbUrl(url);

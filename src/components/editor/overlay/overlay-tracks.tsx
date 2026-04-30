@@ -230,7 +230,7 @@ export function OverlayTracks({ pxPerSecond }: OverlayTracksProps) {
         sourceStartMs: 0,
         sourceDurationMs: dragInfo.sourceDurationMs,
         clipId: dragInfo.clipId,
-        indexeddbKey: dragInfo.indexeddbKey,
+        fileId: dragInfo.fileId,
         volume: 1,
         muted: false,
         fadeInMs: 0,

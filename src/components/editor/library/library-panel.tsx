@@ -11,7 +11,7 @@ type Clip = {
   brollName: string;
   filename: string;
   durationMs: number;
-  indexeddbKey: string;
+  fileId: string;
   folderId: string;
 };
 

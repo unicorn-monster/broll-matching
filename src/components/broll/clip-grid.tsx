@@ -13,7 +13,7 @@ import { useOverlayDragSource } from "@/components/editor/overlay/overlay-drag-s
 
 type Clip = {
   id: string; brollName: string; filename: string;
-  durationMs: number; indexeddbKey: string; folderId: string;
+  durationMs: number; fileId: string; folderId: string;
 };
 
 interface ClipGridProps {
@@ -52,7 +52,7 @@ interface ClipTileProps {
 function ClipTile({ clip, onPreview, onEdit, onDelete, editingId, editName, setEditName, onRename, onCancelEdit }: ClipTileProps) {
   const dragProps = useOverlayDragSource({
     clipId: clip.id,
-    indexeddbKey: clip.indexeddbKey,
+    fileId: clip.fileId,
     durationMs: clip.durationMs,
     thumbnailUrl: null,
   });
@@ -61,11 +61,11 @@ function ClipTile({ clip, onPreview, onEdit, onDelete, editingId, editName, setE
       key={clip.id}
       data-broll-thumbnail
       {...dragProps}
-      onClick={() => onPreview(clip.indexeddbKey)}
+      onClick={() => onPreview(clip.fileId)}
       className="group relative border border-border rounded-lg overflow-hidden bg-muted/20 cursor-pointer"
     >
       <div className="aspect-[4/5] relative">
-        <ThumbnailImage clipId={clip.indexeddbKey} />
+        <ThumbnailImage clipId={clip.fileId} />
         <div className="absolute bottom-1 right-1 bg-black/60 text-white text-xs px-1 rounded">
           {formatMs(clip.durationMs)}
         </div>

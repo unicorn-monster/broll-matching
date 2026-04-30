@@ -112,11 +112,11 @@ self.onmessage = async (e: MessageEvent) => {
             segName,
           ]);
         } else {
-          const clipBuf = clips[matched.indexeddbKey];
+          const clipBuf = clips[matched.fileId];
           if (!clipBuf) continue;
           const inputName = `input-${i}-${j}.mp4`;
           // Copy: ffmpeg.writeFile transfers (detaches) the buffer to its internal
-          // worker. Same indexeddbKey appears in multiple timeline entries, so the
+          // worker. Same fileId appears in multiple timeline entries, so the
           // cached clipBuf must survive for the next iteration.
           await ffmpeg.writeFile(inputName, new Uint8Array(clipBuf).slice());
 

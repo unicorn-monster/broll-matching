@@ -22,7 +22,7 @@ const make = (overrides: Partial<BrollVideoOverlay> = {}): BrollVideoOverlay => 
   fadeInMs: 0,
   fadeOutMs: 0,
   clipId: "c1",
-  indexeddbKey: "k1",
+  fileId: "k1",
   sourceStartMs: 0,
   sourceDurationMs: 1000,
   ...overrides,
