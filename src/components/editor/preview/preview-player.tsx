@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Play, Pause } from "lucide-react";
 import { useBuildState } from "@/components/build/build-state-context";
-import { getClip } from "@/lib/clip-storage";
+import { useMediaPool } from "@/state/media-pool";
 import {
   buildFullTimelinePlaybackPlan,
   findClipAtMs,
@@ -35,6 +35,8 @@ export function PreviewPlayer() {
     overlays,
   } = useBuildState();
 
+  const mediaPool = useMediaPool();
+
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
   const overlayVideoRefs = useRef<Map<string, HTMLVideoElement | null>>(new Map());
@@ -61,55 +63,37 @@ export function PreviewPlayer() {
     return () => URL.revokeObjectURL(url);
   }, [audioFile]);
 
-  // Revoke clip blob URLs only on full unmount.
+  // Populate clip URL cache from mediaPool (synchronous — no IndexedDB read).
   useEffect(() => {
-    const ref = clipUrlsRef;
-    return () => {
-      ref.current.forEach((u) => URL.revokeObjectURL(u));
-      ref.current.clear();
-    };
-  }, []);
-
-  // Eager pre-fetch every real clip the moment timeline or overlays change so
-  // playback never stalls on an IndexedDB read mid-scrub.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const additions = new Map<string, string>();
-      if (timeline) {
-        for (const section of timeline) {
-          for (const c of section.clips) {
-            if (c.isPlaceholder) continue;
-            if (clipUrlsRef.current.has(c.fileId)) continue;
-            const buf = await getClip(c.fileId);
-            if (cancelled || !buf) continue;
-            const url = URL.createObjectURL(new Blob([buf], { type: "video/mp4" }));
-            clipUrlsRef.current.set(c.fileId, url);
-            additions.set(c.fileId, url);
-          }
+    const additions = new Map<string, string>();
+    if (timeline) {
+      for (const section of timeline) {
+        for (const c of section.clips) {
+          if (c.isPlaceholder) continue;
+          if (clipUrlsRef.current.has(c.fileId)) continue;
+          const url = mediaPool.getFileURL(c.fileId);
+          if (!url) continue;
+          clipUrlsRef.current.set(c.fileId, url);
+          additions.set(c.fileId, url);
         }
       }
-      for (const o of overlays) {
-        if (o.kind !== "broll-video") continue;
-        if (clipUrlsRef.current.has(o.fileId)) continue;
-        const buf = await getClip(o.fileId);
-        if (cancelled || !buf) continue;
-        const url = URL.createObjectURL(new Blob([buf], { type: "video/mp4" }));
-        clipUrlsRef.current.set(o.fileId, url);
-        additions.set(o.fileId, url);
-      }
-      if (!cancelled && additions.size > 0) {
-        setClipUrls((prev) => {
-          const next = new Map(prev);
-          additions.forEach((v, k) => next.set(k, v));
-          return next;
-        });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [timeline, overlays]);
+    }
+    for (const o of overlays) {
+      if (o.kind !== "broll-video") continue;
+      if (clipUrlsRef.current.has(o.fileId)) continue;
+      const url = mediaPool.getFileURL(o.fileId);
+      if (!url) continue;
+      clipUrlsRef.current.set(o.fileId, url);
+      additions.set(o.fileId, url);
+    }
+    if (additions.size > 0) {
+      setClipUrls((prev) => {
+        const next = new Map(prev);
+        additions.forEach((v, k) => next.set(k, v));
+        return next;
+      });
+    }
+  }, [timeline, overlays, mediaPool]);
 
   const plan = useMemo(() => {
     if (!timeline || !audioUrl) return null;
@@ -316,12 +300,11 @@ export function PreviewPlayer() {
     if (timelineVideo && !timelineVideo.paused) timelineVideo.pause();
 
     let cancelled = false;
-    (async () => {
+    (() => {
       let url = clipUrlsRef.current.get(previewClipKey);
       if (!url) {
-        const buf = await getClip(previewClipKey);
-        if (cancelled || !buf) return;
-        url = URL.createObjectURL(new Blob([buf], { type: "video/mp4" }));
+        url = mediaPool.getFileURL(previewClipKey) ?? undefined;
+        if (!url) return;
         clipUrlsRef.current.set(previewClipKey, url);
       }
       if (cancelled) return;
