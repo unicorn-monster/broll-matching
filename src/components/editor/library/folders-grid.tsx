@@ -17,6 +17,7 @@ interface FoldersGridProps {
   onSelectAll: () => void;
   onSelectFolder: (folderId: string) => void;
   onAdd: () => void;
+  onDropFolders: (entries: FileSystemDirectoryEntry[]) => void;  // NEW
   onRename: (id: string, name: string) => Promise<void> | void;
   onDelete: (id: string) => Promise<void> | void;
   busyAdding?: boolean;
@@ -29,18 +30,55 @@ export function FoldersGrid({
   onSelectAll,
   onSelectFolder,
   onAdd,
+  onDropFolders,
   onRename,
   onDelete,
   busyAdding,
   busyProgress,
 }: FoldersGridProps) {
   const [query, setQuery] = useState("");
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+
+  function getFolderEntries(e: React.DragEvent): FileSystemDirectoryEntry[] {
+    const entries: FileSystemDirectoryEntry[] = [];
+    for (const item of Array.from(e.dataTransfer.items)) {
+      const entry = item.webkitGetAsEntry?.();
+      if (entry?.isDirectory) entries.push(entry as FileSystemDirectoryEntry);
+    }
+    return entries;
+  }
 
   const visibleFolders = filterFoldersByName(folders, query);
   const showEmptyHint = folders.length === 0;
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div
+      className="h-full flex flex-col overflow-hidden relative"
+      onDragEnter={(e) => {
+        e.preventDefault();
+        if (getFolderEntries(e).length > 0) setIsDraggingOver(true);
+      }}
+      onDragOver={(e) => {
+        e.preventDefault();
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+          setIsDraggingOver(false);
+        }
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setIsDraggingOver(false);
+        const entries = getFolderEntries(e);
+        if (entries.length > 0) onDropFolders(entries);
+      }}
+    >
+      {isDraggingOver && (
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-background/90 backdrop-blur-sm border-2 border-dashed border-primary rounded-md pointer-events-none">
+          <Folder className="w-12 h-12 fill-primary/20 text-primary" />
+          <span className="text-sm font-medium text-primary">Drop folders here</span>
+        </div>
+      )}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border text-xs">
         <span className="font-medium text-muted-foreground uppercase tracking-wide shrink-0">Library</span>
         <div className="relative flex-1 min-w-0">
