@@ -24,8 +24,9 @@ export function categorizeFiles(files: File[]): CategorizedFiles {
 export function groupFilesByFolder(files: FileList | File[]): Map<string, File[]> {
   const map = new Map<string, File[]>();
   for (const file of Array.from(files)) {
-    const rel = (file as File & { webkitRelativePath?: string }).webkitRelativePath;
-    const key = rel ? rel.split("/")[0] : file.name;
+    const key = file.webkitRelativePath
+      ? file.webkitRelativePath.split("/")[0] ?? file.name
+      : file.name;
     if (!map.has(key)) map.set(key, []);
     map.get(key)!.push(file);
   }
