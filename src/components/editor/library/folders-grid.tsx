@@ -17,11 +17,20 @@ interface FoldersGridProps {
   onSelectAll: () => void;
   onSelectFolder: (folderId: string) => void;
   onAdd: () => void;
-  onDropFolders: (entries: FileSystemDirectoryEntry[]) => void;  // NEW
+  onDropFolders: (entries: FileSystemDirectoryEntry[]) => void;
   onRename: (id: string, name: string) => Promise<void> | void;
   onDelete: (id: string) => Promise<void> | void;
   busyAdding?: boolean;
   busyProgress?: { done: number; total: number } | null;
+}
+
+function getFolderEntries(e: React.DragEvent): FileSystemDirectoryEntry[] {
+  const entries: FileSystemDirectoryEntry[] = [];
+  for (const item of Array.from(e.dataTransfer.items)) {
+    const entry = item.webkitGetAsEntry?.();
+    if (entry?.isDirectory) entries.push(entry as FileSystemDirectoryEntry);
+  }
+  return entries;
 }
 
 export function FoldersGrid({
@@ -38,15 +47,6 @@ export function FoldersGrid({
 }: FoldersGridProps) {
   const [query, setQuery] = useState("");
   const [isDraggingOver, setIsDraggingOver] = useState(false);
-
-  function getFolderEntries(e: React.DragEvent): FileSystemDirectoryEntry[] {
-    const entries: FileSystemDirectoryEntry[] = [];
-    for (const item of Array.from(e.dataTransfer.items)) {
-      const entry = item.webkitGetAsEntry?.();
-      if (entry?.isDirectory) entries.push(entry as FileSystemDirectoryEntry);
-    }
-    return entries;
-  }
 
   const visibleFolders = filterFoldersByName(folders, query);
   const showEmptyHint = folders.length === 0;
