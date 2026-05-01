@@ -104,35 +104,37 @@ export function LibraryPanel() {
     let totalSkipped = 0;
     const takenNames = mediaPool.folders.map((f) => f.name);
 
-    for (let i = 0; i < folders.length; i++) {
-      setBusyProgress({ done: i, total: folders.length });
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      const { name, files } = folders[i]!;
-      const { videos } = categorizeFiles(files);
-      if (videos.length === 0) {
-        totalSkipped += files.length;
-        continue;
-      }
-      totalSkipped += files.length - videos.length;
+    try {
+      for (let i = 0; i < folders.length; i++) {
+        setBusyProgress({ done: i, total: folders.length });
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        const { name, files } = folders[i]!;
+        const { videos } = categorizeFiles(files);
+        if (videos.length === 0) {
+          totalSkipped += files.length;
+          continue;
+        }
+        totalSkipped += files.length - videos.length;
 
-      let finalName = name;
-      if (takenNames.includes(name)) {
-        finalName = resolveCollidingFolderName(name, takenNames);
-        totalRenamed++;
-      }
+        let finalName = name;
+        if (takenNames.includes(name)) {
+          finalName = resolveCollidingFolderName(name, takenNames);
+          totalRenamed++;
+        }
 
-      try {
-        const result = await mediaPool.addFolder(finalName, videos);
-        totalAdded++;
-        totalSkipped += result.skipped.length;
-        takenNames.push(finalName);
-      } catch {
-        totalSkipped += videos.length;
+        try {
+          const result = await mediaPool.addFolder(finalName, videos);
+          totalAdded++;
+          totalSkipped += result.skipped.length;
+          takenNames.push(finalName);
+        } catch {
+          totalSkipped += videos.length;
+        }
       }
+    } finally {
+      setBusyAdding(false);
+      setBusyProgress(null);
     }
-
-    setBusyAdding(false);
-    setBusyProgress(null);
 
     const parts: string[] = [];
     if (totalAdded > 0) parts.push(`${totalAdded} folder${totalAdded === 1 ? "" : "s"} added`);
@@ -153,6 +155,7 @@ export function LibraryPanel() {
   async function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
+    if (busyAdding) { e.target.value = ""; return; }
     e.target.value = "";
 
     const grouped = groupFilesByFolder(fileList);
@@ -198,7 +201,10 @@ export function LibraryPanel() {
         // unreadable entry — skip silently
       }
     }
-    if (folders.length === 0) return;
+    if (folders.length === 0) {
+      toast.error("Could not read dropped folders — check permissions");
+      return;
+    }
     await handleMultipleFolders(folders);
   }
 

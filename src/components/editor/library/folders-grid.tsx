@@ -69,6 +69,7 @@ export function FoldersGrid({
       onDrop={(e) => {
         e.preventDefault();
         setIsDraggingOver(false);
+        if (busyAdding) return;
         const entries = getFolderEntries(e);
         if (entries.length > 0) onDropFolders(entries);
       }}
