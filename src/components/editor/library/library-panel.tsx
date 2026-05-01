@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef } from "react";
 import { ArrowLeft } from "lucide-react";
 import { filterClipsByQuery } from "@/lib/clip-filter";
 import { useMediaPool } from "@/state/media-pool";
@@ -12,6 +12,7 @@ import {
   type DuplicateAction,
 } from "@/components/broll/duplicate-folder-dialog";
 import { DeleteFolderDialog } from "@/components/broll/delete-folder-dialog";
+import { walkDirectoryEntry, groupFilesByFolder, categorizeFiles } from "@/lib/folder-import";
 import { resolveCollidingFolderName } from "@/lib/folder-name-collision";
 import { useBuildState } from "@/components/build/build-state-context";
 import { toast } from "sonner";
@@ -47,6 +48,8 @@ export function LibraryPanel() {
   const [view, setView] = useState<View>("folders");
   const [busyAdding, setBusyAdding] = useState(false);
   const [busyProgress, setBusyProgress] = useState<{ done: number; total: number } | null>(null);
+
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const [duplicateDialog, setDuplicateDialog] = useState<PendingFolder | null>(null);
   const [invalidDialog, setInvalidDialog] = useState<InvalidDialogState | null>(null);
@@ -94,40 +97,109 @@ export function LibraryPanel() {
     }
   }
 
-  async function handleAdd() {
-    let picked: { videos: File[]; audios: File[]; folderName: string };
-    try {
-      picked = await pickFolderWithName();
-    } catch (err) {
-      if (err instanceof Error && err.name !== "AbortError") {
-        toast.error(err.message);
+  async function handleMultipleFolders(folders: { name: string; files: File[] }[]) {
+    setBusyAdding(true);
+    let totalAdded = 0;
+    let totalRenamed = 0;
+    let totalSkipped = 0;
+    const takenNames = mediaPool.folders.map((f) => f.name);
+
+    for (let i = 0; i < folders.length; i++) {
+      setBusyProgress({ done: i, total: folders.length });
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      const { name, files } = folders[i]!;
+      const { videos } = categorizeFiles(files);
+      if (videos.length === 0) {
+        totalSkipped += files.length;
+        continue;
       }
-      return;
+      totalSkipped += files.length - videos.length;
+
+      let finalName = name;
+      if (takenNames.includes(name)) {
+        finalName = resolveCollidingFolderName(name, takenNames);
+        totalRenamed++;
+      }
+
+      try {
+        const result = await mediaPool.addFolder(finalName, videos);
+        totalAdded++;
+        totalSkipped += result.skipped.length;
+        takenNames.push(finalName);
+      } catch {
+        totalSkipped += videos.length;
+      }
     }
 
-    if (picked.videos.length === 0) {
-      toast.error("No video files found in the selected folder");
-      return;
-    }
+    setBusyAdding(false);
+    setBusyProgress(null);
 
-    const existing = mediaPool.folders.find((f) => f.name === picked.folderName);
-    if (existing) {
-      const existingClipCount = mediaPool.videos.filter((v) => v.folderId === existing.id).length;
-      const proposedNewName = resolveCollidingFolderName(
-        picked.folderName,
-        mediaPool.folders.map((f) => f.name),
-      );
-      setDuplicateDialog({
-        pickedName: picked.folderName,
-        files: picked.videos,
-        existingFolderId: existing.id,
-        existingClipCount,
-        proposedNewName,
-      });
-      return;
-    }
+    const parts: string[] = [];
+    if (totalAdded > 0) parts.push(`${totalAdded} folder${totalAdded === 1 ? "" : "s"} added`);
+    if (totalRenamed > 0) parts.push(`${totalRenamed} auto-renamed`);
+    if (totalSkipped > 0) parts.push(`${totalSkipped} file${totalSkipped === 1 ? "" : "s"} skipped`);
 
-    await processAdd(picked.folderName, picked.videos);
+    if (parts.length > 0) {
+      toast.success(parts.join(" · "));
+    } else {
+      toast.error("No video files found in selected folders");
+    }
+  }
+
+  function handleAdd() {
+    inputRef.current?.click();
+  }
+
+  async function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
+    e.target.value = "";
+
+    const grouped = groupFilesByFolder(fileList);
+    const folders = Array.from(grouped.entries()).map(([name, files]) => ({ name, files }));
+
+    if (folders.length === 1) {
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      const { name, files } = folders[0]!;
+      const { videos } = categorizeFiles(files);
+      if (videos.length === 0) {
+        toast.error("No video files found in the selected folder");
+        return;
+      }
+      const existing = mediaPool.folders.find((f) => f.name === name);
+      if (existing) {
+        const existingClipCount = mediaPool.videos.filter((v) => v.folderId === existing.id).length;
+        const proposedNewName = resolveCollidingFolderName(
+          name,
+          mediaPool.folders.map((f) => f.name),
+        );
+        setDuplicateDialog({
+          pickedName: name,
+          files: videos,
+          existingFolderId: existing.id,
+          existingClipCount,
+          proposedNewName,
+        });
+        return;
+      }
+      await processAdd(name, videos);
+    } else {
+      await handleMultipleFolders(folders);
+    }
+  }
+
+  async function handleDropFolders(entries: FileSystemDirectoryEntry[]) {
+    const folders: { name: string; files: File[] }[] = [];
+    for (const entry of entries) {
+      try {
+        const files = await walkDirectoryEntry(entry);
+        folders.push({ name: entry.name, files });
+      } catch {
+        // unreadable entry — skip silently
+      }
+    }
+    if (folders.length === 0) return;
+    await handleMultipleFolders(folders);
   }
 
   function handleDuplicateChoice(action: DuplicateAction) {
@@ -198,6 +270,7 @@ export function LibraryPanel() {
           onSelectAll={handleSelectAll}
           onSelectFolder={handleSelectFolder}
           onAdd={handleAdd}
+          onDropFolders={handleDropFolders}
           onRename={mediaPool.renameFolder}
           onDelete={handleDeleteRequest}
           busyAdding={busyAdding}
@@ -259,20 +332,14 @@ export function LibraryPanel() {
           bulk={false}
         />
       ) : null}
+
+      <input
+        ref={inputRef}
+        type="file"
+        className="hidden"
+        onChange={handleInputChange}
+        {...{ webkitdirectory: "", multiple: true }}
+      />
     </div>
   );
-}
-
-async function pickFolderWithName(): Promise<{ videos: File[]; audios: File[]; folderName: string }> {
-  if (typeof window === "undefined" || !("showDirectoryPicker" in window)) {
-    throw new Error("showDirectoryPicker not supported (Chrome/Edge required)");
-  }
-  // @ts-expect-error showDirectoryPicker is missing from lib.dom on some TS versions
-  const handle: FileSystemDirectoryHandle = await window.showDirectoryPicker({ mode: "read" });
-  const folderName = handle.name;
-  const { walkDirectoryHandle, categorizeFiles } = await import("@/lib/folder-import");
-  const all: File[] = [];
-  for await (const file of walkDirectoryHandle(handle)) all.push(file);
-  const { videos, audios } = categorizeFiles(all);
-  return { videos, audios, folderName };
 }
