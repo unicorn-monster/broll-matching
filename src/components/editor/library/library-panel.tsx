@@ -139,10 +139,10 @@ export function LibraryPanel() {
     if (totalRenamed > 0) parts.push(`${totalRenamed} auto-renamed`);
     if (totalSkipped > 0) parts.push(`${totalSkipped} file${totalSkipped === 1 ? "" : "s"} skipped`);
 
-    if (parts.length > 0) {
-      toast.success(parts.join(" · "));
-    } else {
+    if (totalAdded === 0) {
       toast.error("No video files found in selected folders");
+    } else {
+      toast.success(parts.join(" · "));
     }
   }
 
