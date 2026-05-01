@@ -21,6 +21,17 @@ export function categorizeFiles(files: File[]): CategorizedFiles {
   return { videos, audios };
 }
 
+export function groupFilesByFolder(files: FileList | File[]): Map<string, File[]> {
+  const map = new Map<string, File[]>();
+  for (const file of Array.from(files)) {
+    const rel = (file as File & { webkitRelativePath?: string }).webkitRelativePath;
+    const key = rel ? rel.split("/")[0] : file.name;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(file);
+  }
+  return map;
+}
+
 export async function* walkDirectoryHandle(
   handle: FileSystemDirectoryHandle,
 ): AsyncGenerator<File, void, unknown> {
@@ -34,15 +45,21 @@ export async function* walkDirectoryHandle(
   }
 }
 
-export async function pickFolder(): Promise<CategorizedFiles> {
-  if (typeof window === "undefined" || !("showDirectoryPicker" in window)) {
-    throw new Error("showDirectoryPicker not supported (Chrome/Edge required)");
-  }
-  // @ts-expect-error showDirectoryPicker is missing from lib.dom on some TS versions
-  const handle: FileSystemDirectoryHandle = await window.showDirectoryPicker({ mode: "read" });
-  const all: File[] = [];
-  for await (const file of walkDirectoryHandle(handle)) {
-    all.push(file);
-  }
-  return categorizeFiles(all);
+export async function walkDirectoryEntry(entry: FileSystemDirectoryEntry): Promise<File[]> {
+  const files: File[] = [];
+  const reader = entry.createReader();
+  let batch: FileSystemEntry[];
+  do {
+    batch = await new Promise<FileSystemEntry[]>((res, rej) => reader.readEntries(res, rej));
+    for (const e of batch) {
+      if (e.isFile) {
+        files.push(
+          await new Promise<File>((res, rej) => (e as FileSystemFileEntry).file(res, rej)),
+        );
+      } else if (e.isDirectory) {
+        files.push(...(await walkDirectoryEntry(e as FileSystemDirectoryEntry)));
+      }
+    }
+  } while (batch.length > 0);
+  return files;
 }
