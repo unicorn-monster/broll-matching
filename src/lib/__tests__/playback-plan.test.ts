@@ -2,8 +2,6 @@ import { describe, it, expect } from "vitest";
 import { buildSectionPlaybackPlan, buildFullTimelinePlaybackPlan, findClipAtMs, findSectionAtMs, clipIdentityKey } from "../playback-plan";
 import type { MatchedSection } from "../auto-match";
 
-// First arg (clip duration) is informational only — MatchedClip carries
-// speedFactor + fileId, not its own duration. Keeps call sites readable.
 const seg = (
   _durationMs: number,
   speedFactor: number,
@@ -16,75 +14,13 @@ const seg = (
   isPlaceholder,
 });
 
-describe("buildSectionPlaybackPlan", () => {
-  it("computes audioStartMs as the cumulative duration of preceding sections", () => {
-    const timeline = [
-      { sectionIndex: 0, tag: "a", durationMs: 5000, clips: [seg(5000, 1)], warnings: [] },
-      { sectionIndex: 1, tag: "b", durationMs: 3000, clips: [seg(3000, 1)], warnings: [] },
-      { sectionIndex: 2, tag: "c", durationMs: 4000, clips: [seg(4000, 1)], warnings: [] },
-    ] as MatchedSection[];
-
-    const blobs = new Map([["k0", "blob:0"], ["k1", "blob:1"], ["k2", "blob:2"]]);
-
-    const plan = buildSectionPlaybackPlan(timeline, 1, "blob:audio", blobs);
-
-    expect(plan.audioStartMs).toBe(5000);
-    expect(plan.audioUrl).toBe("blob:audio");
-  });
-
-  it("emits one entry per non-placeholder clip with the correct speedFactor", () => {
-    const timeline = [
-      {
-        sectionIndex: 0,
-        tag: "a",
-        durationMs: 5000,
-        clips: [seg(2500, 1.5, false, 0), seg(2500, 1.5, false, 1)],
-        warnings: [],
-      },
-    ] as MatchedSection[];
-    const blobs = new Map([["k0", "blob:0"], ["k1", "blob:1"]]);
-
-    const plan = buildSectionPlaybackPlan(timeline, 0, "blob:audio", blobs);
-
-    expect(plan.clips).toHaveLength(2);
-    expect(plan.clips[0]).toMatchObject({ srcUrl: "blob:0", speedFactor: 1.5 });
-    expect(plan.clips[1]).toMatchObject({ srcUrl: "blob:1", speedFactor: 1.5 });
-  });
-
-  it("produces an empty clips array when section is placeholder-only (renders black)", () => {
-    const timeline = [
-      { sectionIndex: 0, tag: "?", durationMs: 4000, clips: [seg(0, 1, true)], warnings: [] },
-    ] as MatchedSection[];
-    const blobs = new Map();
-    const plan = buildSectionPlaybackPlan(timeline, 0, "blob:audio", blobs);
-    expect(plan.clips).toEqual([]);
-  });
-
-  it("skips clips whose blob URL is missing (defensive — clip not loaded yet)", () => {
-    const timeline = [
-      {
-        sectionIndex: 0,
-        tag: "a",
-        durationMs: 2000,
-        clips: [seg(1000, 1, false, 0), seg(1000, 1, false, 1)],
-        warnings: [],
-      },
-    ] as MatchedSection[];
-    const blobs = new Map([["k0", "blob:0"]]); // k1 missing
-
-    const plan = buildSectionPlaybackPlan(timeline, 0, "blob:audio", blobs);
-    expect(plan.clips).toHaveLength(1);
-    expect(plan.clips[0]!.srcUrl).toBe("blob:0");
-    expect(plan.clips[0]!.startMs).toBe(0);
-    expect(plan.clips[0]!.endMs).toBe(1000);
-  });
-});
-
-function s(durationMs: number, clips: { key: string; speed: number; placeholder?: boolean }[]): MatchedSection {
+function ms(start: number, end: number, clips: { key: string; speed: number; placeholder?: boolean }[]): MatchedSection {
   return {
     sectionIndex: 0,
     tag: "x",
-    durationMs,
+    startMs: start,
+    endMs: end,
+    durationMs: end - start,
     userLocked: false,
     warnings: [],
     clips: clips.map((c) => ({
@@ -96,6 +32,55 @@ function s(durationMs: number, clips: { key: string; speed: number; placeholder?
   };
 }
 
+describe("buildSectionPlaybackPlan", () => {
+  it("uses section.startMs as audioStartMs (absolute, not cumulative)", () => {
+    const timeline: MatchedSection[] = [
+      { sectionIndex: 0, tag: "a", startMs: 0,    endMs: 5000,  durationMs: 5000, clips: [seg(5000, 1)], warnings: [] },
+      { sectionIndex: 1, tag: "b", startMs: 8000, endMs: 11000, durationMs: 3000, clips: [seg(3000, 1, false, 1)], warnings: [] },
+      { sectionIndex: 2, tag: "c", startMs: 20000, endMs: 24000, durationMs: 4000, clips: [seg(4000, 1, false, 2)], warnings: [] },
+    ];
+    const blobs = new Map([["k0", "blob:0"], ["k1", "blob:1"], ["k2", "blob:2"]]);
+
+    const plan = buildSectionPlaybackPlan(timeline, 1, "blob:audio", blobs);
+
+    expect(plan.audioStartMs).toBe(8000);
+    expect(plan.audioUrl).toBe("blob:audio");
+  });
+
+  it("emits one entry per non-placeholder clip with correct speedFactor", () => {
+    const timeline: MatchedSection[] = [
+      ms(0, 5000, [{ key: "k0", speed: 1.5 }, { key: "k1", speed: 1.5 }]),
+    ];
+    const blobs = new Map([["k0", "blob:0"], ["k1", "blob:1"]]);
+
+    const plan = buildSectionPlaybackPlan(timeline, 0, "blob:audio", blobs);
+
+    expect(plan.clips).toHaveLength(2);
+    expect(plan.clips[0]).toMatchObject({ srcUrl: "blob:0", speedFactor: 1.5 });
+    expect(plan.clips[1]).toMatchObject({ srcUrl: "blob:1", speedFactor: 1.5 });
+  });
+
+  it("produces empty clips array when section is placeholder-only (renders black)", () => {
+    const timeline: MatchedSection[] = [ms(0, 4000, [{ key: "k0", speed: 1, placeholder: true }])];
+    const blobs = new Map();
+    const plan = buildSectionPlaybackPlan(timeline, 0, "blob:audio", blobs);
+    expect(plan.clips).toEqual([]);
+  });
+
+  it("skips clips whose blob URL is missing (defensive)", () => {
+    const timeline: MatchedSection[] = [
+      ms(0, 2000, [{ key: "k0", speed: 1 }, { key: "k1", speed: 1 }]),
+    ];
+    const blobs = new Map([["k0", "blob:0"]]); // k1 missing
+
+    const plan = buildSectionPlaybackPlan(timeline, 0, "blob:audio", blobs);
+    expect(plan.clips).toHaveLength(1);
+    expect(plan.clips[0]!.srcUrl).toBe("blob:0");
+    expect(plan.clips[0]!.startMs).toBe(0);
+    expect(plan.clips[0]!.endMs).toBe(1000);
+  });
+});
+
 describe("buildFullTimelinePlaybackPlan", () => {
   it("returns empty clips when timeline is empty", () => {
     const plan = buildFullTimelinePlaybackPlan([], "audio.mp3", new Map());
@@ -103,48 +88,47 @@ describe("buildFullTimelinePlaybackPlan", () => {
     expect(plan.audioUrl).toBe("audio.mp3");
   });
 
-  it("emits one clip per real chain entry with absolute start/end across sections", () => {
-    const timeline = [
-      s(2000, [{ key: "a", speed: 1 }]),
-      s(3000, [{ key: "b", speed: 2 }, { key: "c", speed: 1.5 }]),
+  it("emits clips with absolute startMs based on section.startMs (gaps preserved)", () => {
+    const timeline: MatchedSection[] = [
+      ms(1000, 3000, [{ key: "a", speed: 1 }]),         // 1s..3s
+      ms(10000, 13000, [                                  // 10s..13s, two clips → 1.5s each
+        { key: "b", speed: 2 },
+        { key: "c", speed: 1.5 },
+      ]),
     ];
-    const urls = new Map([
-      ["a", "blob:a"],
-      ["b", "blob:b"],
-      ["c", "blob:c"],
-    ]);
+    const urls = new Map([["a", "blob:a"], ["b", "blob:b"], ["c", "blob:c"]]);
     const plan = buildFullTimelinePlaybackPlan(timeline, "audio.mp3", urls);
     expect(plan.clips).toEqual([
-      { srcUrl: "blob:a", startMs: 0, endMs: 2000, speedFactor: 1, fileId: "a" },
-      { srcUrl: "blob:b", startMs: 2000, endMs: 3500, speedFactor: 2, fileId: "b" },
-      { srcUrl: "blob:c", startMs: 3500, endMs: 5000, speedFactor: 1.5, fileId: "c" },
+      { srcUrl: "blob:a", startMs: 1000,  endMs: 3000,  speedFactor: 1,   fileId: "a" },
+      { srcUrl: "blob:b", startMs: 10000, endMs: 11500, speedFactor: 2,   fileId: "b" },
+      { srcUrl: "blob:c", startMs: 11500, endMs: 13000, speedFactor: 1.5, fileId: "c" },
     ]);
   });
 
-  it("skips placeholder-only sections but advances the cursor", () => {
-    const timeline = [
-      s(1000, [{ key: "a", speed: 1 }]),
-      s(2000, [{ key: "_", speed: 1, placeholder: true }]),
-      s(1000, [{ key: "b", speed: 1 }]),
+  it("skips placeholder-only sections — gap stays as gap (no clips emitted)", () => {
+    const timeline: MatchedSection[] = [
+      ms(0,    1000, [{ key: "a", speed: 1 }]),
+      ms(1000, 3000, [{ key: "_", speed: 1, placeholder: true }]),
+      ms(3000, 4000, [{ key: "b", speed: 1 }]),
     ];
     const urls = new Map([["a", "blob:a"], ["b", "blob:b"]]);
     const plan = buildFullTimelinePlaybackPlan(timeline, "audio.mp3", urls);
     expect(plan.clips).toEqual([
-      { srcUrl: "blob:a", startMs: 0, endMs: 1000, speedFactor: 1, fileId: "a" },
+      { srcUrl: "blob:a", startMs: 0,    endMs: 1000, speedFactor: 1, fileId: "a" },
       { srcUrl: "blob:b", startMs: 3000, endMs: 4000, speedFactor: 1, fileId: "b" },
     ]);
   });
 
-  it("skips a real clip whose blob URL is missing but keeps later clips aligned", () => {
-    const timeline = [
-      s(1000, [{ key: "a", speed: 1 }]),
-      s(2000, [{ key: "missing", speed: 1 }]),
-      s(1000, [{ key: "b", speed: 1 }]),
+  it("skips a real clip whose blob URL is missing", () => {
+    const timeline: MatchedSection[] = [
+      ms(0,    1000, [{ key: "a", speed: 1 }]),
+      ms(1000, 3000, [{ key: "missing", speed: 1 }]),
+      ms(3000, 4000, [{ key: "b", speed: 1 }]),
     ];
     const urls = new Map([["a", "blob:a"], ["b", "blob:b"]]);
     const plan = buildFullTimelinePlaybackPlan(timeline, "audio.mp3", urls);
     expect(plan.clips).toEqual([
-      { srcUrl: "blob:a", startMs: 0, endMs: 1000, speedFactor: 1, fileId: "a" },
+      { srcUrl: "blob:a", startMs: 0,    endMs: 1000, speedFactor: 1, fileId: "a" },
       { srcUrl: "blob:b", startMs: 3000, endMs: 4000, speedFactor: 1, fileId: "b" },
     ]);
   });
@@ -176,19 +160,28 @@ describe("findClipAtMs", () => {
 });
 
 describe("findSectionAtMs", () => {
-  const timeline = [s(1000, []), s(2000, []), s(500, [])];
+  const timeline: MatchedSection[] = [
+    ms(0,    1000, []),
+    ms(3000, 5000, []),    // gap from 1000..3000
+    ms(5000, 5500, []),
+  ];
 
-  it("maps an audio time to its containing section index", () => {
+  it("maps an audio time to the section whose [startMs, endMs) contains it", () => {
     expect(findSectionAtMs(timeline, 0)).toBe(0);
     expect(findSectionAtMs(timeline, 999)).toBe(0);
-    expect(findSectionAtMs(timeline, 1000)).toBe(1);
-    expect(findSectionAtMs(timeline, 2999)).toBe(1);
-    expect(findSectionAtMs(timeline, 3000)).toBe(2);
-    expect(findSectionAtMs(timeline, 3499)).toBe(2);
+    expect(findSectionAtMs(timeline, 3000)).toBe(1);
+    expect(findSectionAtMs(timeline, 4999)).toBe(1);
+    expect(findSectionAtMs(timeline, 5000)).toBe(2);
+    expect(findSectionAtMs(timeline, 5499)).toBe(2);
   });
 
-  it("returns null past the timeline's total duration", () => {
-    expect(findSectionAtMs(timeline, 3500)).toBeNull();
+  it("returns null when ms falls in a gap between sections", () => {
+    expect(findSectionAtMs(timeline, 1000)).toBeNull();
+    expect(findSectionAtMs(timeline, 2999)).toBeNull();
+  });
+
+  it("returns null past the last section's end", () => {
+    expect(findSectionAtMs(timeline, 5500)).toBeNull();
     expect(findSectionAtMs(timeline, 9999)).toBeNull();
   });
 

@@ -23,8 +23,9 @@ export interface PlaybackPlan {
  * player which clip blob URLs to render and where in the master audio track to
  * start playback so video and voice-over stay in lockstep.
  *
- * - `audioStartMs` is the cumulative duration of all preceding sections, which
- *   is where the master audio should seek to when this section starts.
+ * - `audioStartMs` is the section's absolute start position on the audio
+ *   timeline (`section.startMs`). Sections come from script timestamps, so
+ *   gaps between them are real silence — not summed durations.
  * - `clips` is one entry per non-placeholder MatchedClip with a resolved blob URL.
  *   Placeholder-only sections produce an empty array (player renders black).
  *   Clips whose blob hasn't been loaded yet are skipped defensively rather than
@@ -32,8 +33,9 @@ export interface PlaybackPlan {
  *   skipped clip's slot still advances the time cursor so surviving clips stay
  *   aligned with the master audio (otherwise later clips would slide earlier).
  *
- * `startMs`/`endMs` slot the clips uniformly inside the section duration, which
- * matches how `matchSections` distributes a chain's playback time.
+ * `startMs`/`endMs` are local offsets within the section (0..durationMs) that
+ * slot the clips uniformly inside the section duration, matching how
+ * `matchSections` distributes a chain's playback time.
  */
 export function buildSectionPlaybackPlan(
   timeline: MatchedSection[],
@@ -41,12 +43,10 @@ export function buildSectionPlaybackPlan(
   audioUrl: string,
   clipBlobUrls: Map<string, string>,
 ): PlaybackPlan {
-  const audioStartMs = timeline
-    .slice(0, sectionIndex)
-    .reduce((sum, s) => sum + s.durationMs, 0);
-
   const section = timeline[sectionIndex];
-  if (!section) return { clips: [], audioUrl, audioStartMs };
+  if (!section) return { clips: [], audioUrl, audioStartMs: 0 };
+
+  const audioStartMs = section.startMs;
 
   const real = section.clips.filter((c) => !c.isPlaceholder);
   if (real.length === 0) return { clips: [], audioUrl, audioStartMs };
@@ -71,10 +71,11 @@ export function buildSectionPlaybackPlan(
 
 /**
  * Builds a playback plan that spans the entire timeline. Clips are emitted in
- * play order with absolute `startMs`/`endMs` measured from the start of the
- * master audio. Placeholders and clips with missing blob URLs are skipped, but
- * the time cursor still advances so subsequent clips stay aligned with the
- * audio (the player renders black during the gap).
+ * play order with absolute `startMs`/`endMs` anchored at each section's
+ * `startMs` on the master audio timeline — gaps between sections (script
+ * silences) stay as gaps. Placeholder-only sections emit no clips, leaving
+ * their window as silence as well. Clips with missing blob URLs are skipped
+ * defensively; the player renders black for the resulting hole.
  */
 export function buildFullTimelinePlaybackPlan(
   timeline: MatchedSection[],
@@ -82,18 +83,14 @@ export function buildFullTimelinePlaybackPlan(
   clipBlobUrls: Map<string, string>,
 ): PlaybackPlan {
   const clips: PlaybackPlanClip[] = [];
-  let cursor = 0;
   for (const section of timeline) {
     const real = section.clips.filter((c) => !c.isPlaceholder);
-    if (real.length === 0) {
-      cursor += section.durationMs;
-      continue;
-    }
+    if (real.length === 0) continue;
     const slot = section.durationMs / real.length;
-    for (const c of real) {
-      const startMs = cursor;
-      const endMs = cursor + slot;
-      cursor = endMs;
+    for (let i = 0; i < real.length; i++) {
+      const c = real[i]!;
+      const startMs = section.startMs + slot * i;
+      const endMs = startMs + slot;
       const url = clipBlobUrls.get(c.fileId);
       if (!url) continue;
       clips.push({ srcUrl: url, startMs, endMs, speedFactor: c.speedFactor, fileId: c.fileId });
@@ -115,16 +112,16 @@ export function findClipAtMs(clips: PlaybackPlanClip[], ms: number): PlaybackPla
 }
 
 /**
- * Returns the section index whose cumulative duration window contains ms.
- * Used to keep `selectedSectionIndex` synchronized with the playhead so the
- * Inspector follows along during playback.
+ * Returns the section index whose absolute audio window [startMs, endMs)
+ * contains ms, or null when ms falls in a gap between sections (script
+ * silence) or past the timeline's last section. Used to keep
+ * `selectedSectionIndex` synchronized with the playhead so the Inspector
+ * follows along during playback.
  */
 export function findSectionAtMs(timeline: MatchedSection[], ms: number): number | null {
-  let cursor = 0;
   for (let i = 0; i < timeline.length; i++) {
-    const sectionMs = timeline[i]!.durationMs;
-    if (ms >= cursor && ms < cursor + sectionMs) return i;
-    cursor += sectionMs;
+    const s = timeline[i]!;
+    if (ms >= s.startMs && ms < s.endMs) return i;
   }
   return null;
 }
