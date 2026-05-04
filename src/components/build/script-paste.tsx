@@ -10,6 +10,7 @@ interface ScriptPasteProps {
   text: string;
   onTextChange: (t: string) => void;
   availableBaseNames: Set<string>;
+  audioDurationMs: number | null;
   onParsed: (sections: ParsedSection[], timeline: MatchedSection[]) => void;
 }
 
@@ -60,13 +61,13 @@ function buildLineStatuses(text: string, result: ParsedResult): LineStatus[] {
   return statuses;
 }
 
-export function ScriptPaste({ text, onTextChange, availableBaseNames, onParsed }: ScriptPasteProps) {
+export function ScriptPaste({ text, onTextChange, availableBaseNames, audioDurationMs, onParsed }: ScriptPasteProps) {
   const mediaPool = useMediaPool();
   const [parsedResult, setParsedResult] = useState<ParsedResult | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function handleParse() {
-    const result = parseScript(text, availableBaseNames);
+    const result = parseScript(text, availableBaseNames, audioDurationMs);
 
     if (result.errors.length > 0) {
       setParsedResult({ sections: result.sections, timeline: [], errors: result.errors, warnings: result.warnings });

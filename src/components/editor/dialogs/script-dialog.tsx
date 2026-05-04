@@ -25,7 +25,7 @@ interface ScriptDialogProps {
 }
 
 export function ScriptDialog({ open, onOpenChange }: ScriptDialogProps) {
-  const { scriptText, setScriptText, timeline, onParsed, setTimeline } = useBuildState();
+  const { scriptText, setScriptText, timeline, onParsed, setTimeline, audioDuration } = useBuildState();
   const mediaPool = useMediaPool();
 
   // Derive available base names directly from the media pool — no API fetch needed
@@ -86,6 +86,7 @@ export function ScriptDialog({ open, onOpenChange }: ScriptDialogProps) {
           text={scriptText}
           onTextChange={setScriptText}
           availableBaseNames={availableBaseNames}
+          audioDurationMs={audioDuration ? audioDuration * 1000 : null}
           onParsed={handleParsed}
         />
         <DialogFooter>
