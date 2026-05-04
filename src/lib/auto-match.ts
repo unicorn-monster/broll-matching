@@ -75,6 +75,8 @@ export interface MatchedClip {
 export interface MatchedSection {
   sectionIndex: number;
   tag: string;
+  startMs: number;
+  endMs: number;
   durationMs: number;
   clips: MatchedClip[];
   warnings: string[];
@@ -115,83 +117,85 @@ export function buildClipsByBaseName(clips: ClipMetadata[]): Map<string, ClipMet
 }
 
 
-function shuffle<T>(arr: T[], rng: () => number): T[] {
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1));
-    [arr[i], arr[j]] = [arr[j]!, arr[i]!];
-  }
-  return arr;
-}
+/** Cap on the cooldown buffer length per tag. The effective cooldown is also bounded by
+ *  pool size (`eligible.length - 1`) so we never starve sections when the pool is small. */
+const MAX_COOLDOWN = 8;
 
 interface QueueState {
-  remaining: ClipMetadata[];
-  lastUsed: ClipMetadata | null;
-  fullPool: ClipMetadata[];
+  /** Most-recently-picked clipIds for this tag (index 0 = newest). Length ≤ MAX_COOLDOWN. */
+  recent: string[];
 }
 
 export interface MatchState {
   queues: Map<string, QueueState>;
+  /** Global pick count per clipId, used to bias toward least-used clips across the timeline. */
+  usageCount: Map<string, number>;
   rng: () => number;
 }
 
 export function createMatchState(rng: () => number = Math.random): MatchState {
-  return { queues: new Map(), rng };
+  return { queues: new Map(), usageCount: new Map(), rng };
 }
 
-function ensureQueue(state: MatchState, tagKey: string, fullPool: ClipMetadata[]): QueueState {
+function ensureQueue(state: MatchState, tagKey: string): QueueState {
   let q = state.queues.get(tagKey);
   if (!q) {
-    q = { remaining: shuffle([...fullPool], state.rng), lastUsed: null, fullPool };
+    q = { recent: [] };
     state.queues.set(tagKey, q);
   }
   return q;
 }
 
+function recordPick(state: MatchState, q: QueueState, clipId: string, cooldown: number): void {
+  state.usageCount.set(clipId, (state.usageCount.get(clipId) ?? 0) + 1);
+  q.recent.unshift(clipId);
+  if (q.recent.length > cooldown) q.recent.length = cooldown;
+}
+
+/**
+ * Picks one clip from `eligible` for a section, balancing three goals:
+ *  1. Cooldown — avoid clips used in the last N picks for this tag (N = min(pool-1, MAX_COOLDOWN)).
+ *  2. Least-used first — among non-cooling clips, prefer those with the lowest global usage count.
+ *  3. Shortest-fit — among ties, prefer the clip whose duration is closest to the section length,
+ *     so longer clips stay available for sections that actually need them.
+ *  Final ties broken by `state.rng`. Cooldown is bypassed if it would leave nothing eligible.
+ */
 function pickFromState(
   state: MatchState,
   tagKey: string,
-  fullPool: ClipMetadata[],
   eligible: ClipMetadata[],
 ): ClipMetadata {
-  const q = ensureQueue(state, tagKey, fullPool);
-  const eligibleSet = new Set(eligible);
+  const q = ensureQueue(state, tagKey);
+  const cooldown = Math.min(Math.max(eligible.length - 1, 0), MAX_COOLDOWN);
 
-  for (let i = 0; i < q.remaining.length; i++) {
-    if (eligibleSet.has(q.remaining[i]!)) {
-      const picked = q.remaining.splice(i, 1)[0]!;
-      q.lastUsed = picked;
-      return picked;
-    }
-  }
+  const cooling = new Set(q.recent.slice(0, cooldown));
+  let pool = eligible.filter((c) => !cooling.has(c.id));
+  if (pool.length === 0) pool = eligible;
 
-  q.remaining = shuffle([...fullPool], state.rng);
-  if (q.lastUsed && q.remaining.length >= 2 && q.remaining[0] === q.lastUsed) {
-    [q.remaining[0], q.remaining[1]] = [q.remaining[1]!, q.remaining[0]!];
+  let minUsage = Infinity;
+  for (const c of pool) {
+    const u = state.usageCount.get(c.id) ?? 0;
+    if (u < minUsage) minUsage = u;
   }
-  for (let i = 0; i < q.remaining.length; i++) {
-    if (eligibleSet.has(q.remaining[i]!)) {
-      const picked = q.remaining.splice(i, 1)[0]!;
-      q.lastUsed = picked;
-      return picked;
-    }
-  }
+  pool = pool.filter((c) => (state.usageCount.get(c.id) ?? 0) === minUsage);
 
-  const picked = eligible[Math.floor(state.rng() * eligible.length)]!;
-  q.lastUsed = picked;
+  let minDur = Infinity;
+  for (const c of pool) if (c.durationMs < minDur) minDur = c.durationMs;
+  pool = pool.filter((c) => c.durationMs === minDur);
+
+  const picked = pool[Math.floor(state.rng() * pool.length)]!;
+  recordPick(state, q, picked.id, cooldown);
   return picked;
 }
 
-export function markUsed(
-  state: MatchState,
-  tagKey: string,
-  fullPool: ClipMetadata[],
-  clipId: string,
-): void {
-  const q = ensureQueue(state, tagKey, fullPool);
-  const idx = q.remaining.findIndex((c) => c.id === clipId);
-  if (idx >= 0) q.remaining.splice(idx, 1);
-  const clip = fullPool.find((c) => c.id === clipId);
-  if (clip) q.lastUsed = clip;
+/**
+ * Marks a clip as used externally (e.g. for a user-locked section preserved across re-paste).
+ * Bumps both global usage count and the tag's cooldown buffer so subsequent auto-picks treat
+ * the locked clip as if the matcher had picked it itself.
+ */
+export function markUsed(state: MatchState, tagKey: string, clipId: string): void {
+  const q = ensureQueue(state, tagKey);
+  recordPick(state, q, clipId, MAX_COOLDOWN);
 }
 
 export function matchSections(
@@ -202,9 +206,14 @@ export function matchSections(
   const s = state ?? createMatchState();
   return sections.map((section, sectionIndex) => {
     const warnings: string[] = [];
+    // Carry the absolute audio-timeline position through to MatchedSection so
+    // downstream consumers (timeline, render pipeline) can place B-roll clips at
+    // the script-specified timestamps instead of accumulating a cursor from 0.
+    const startMs = section.startTime * 1000;
+    const endMs = section.endTime * 1000;
 
     if (section.durationMs === 0) {
-      return { sectionIndex, tag: section.tag, durationMs: 0, clips: [], warnings };
+      return { sectionIndex, tag: section.tag, startMs, endMs, durationMs: 0, clips: [], warnings };
     }
 
     const key = section.tag.toLowerCase();
@@ -215,6 +224,8 @@ export function matchSections(
       return {
         sectionIndex,
         tag: section.tag,
+        startMs,
+        endMs,
         durationMs: section.durationMs,
         clips: [{ clipId: "placeholder", fileId: "", speedFactor: 1.0, isPlaceholder: true }],
         warnings,
@@ -229,16 +240,20 @@ export function matchSections(
       return {
         sectionIndex,
         tag: section.tag,
+        startMs,
+        endMs,
         durationMs: section.durationMs,
         clips: [{ clipId: "placeholder", fileId: "", speedFactor: 1, isPlaceholder: true }],
         warnings,
       };
     }
 
-    const clip = pickFromState(s, key, candidates, eligible);
+    const clip = pickFromState(s, key, eligible);
     return {
       sectionIndex,
       tag: section.tag,
+      startMs,
+      endMs,
       durationMs: section.durationMs,
       clips: [{
         clipId: clip.id,

@@ -100,8 +100,19 @@ describe("matchSections", () => {
     }
   });
 
-  it("trim mode: random pick across all eligible clips", () => {
+  it("trim mode: shortest-fit — first pick prefers the clip closest to section duration", () => {
+    // Section 3s, eligible 4s/5s/6s. Shortest-fit deterministically picks the 4s clip first.
     const clips = [makeClip("hook-01", 4000), makeClip("hook-02", 5000), makeClip("hook-03", 6000)];
+    const map = buildClipsByBaseName(clips);
+    for (let trial = 0; trial < 50; trial++) {
+      const matched = matchSections([makeSection("Hook", 3000)], map)[0]!;
+      expect(matched.clips[0]!.clipId).toBe("hook-01");
+    }
+  });
+
+  it("trim mode: ties on duration broken randomly across all eligible clips", () => {
+    // All clips equal duration → least-used + shortest-fit tie → rng picks among them.
+    const clips = [makeClip("hook-01", 5000), makeClip("hook-02", 5000), makeClip("hook-03", 5000)];
     const map = buildClipsByBaseName(clips);
     const seen = new Set<string>();
     for (let trial = 0; trial < 200; trial++) {
@@ -262,6 +273,76 @@ describe("matchSections — no back-to-back repeats", () => {
   });
 });
 
+describe("matchSections — distribution & shortest-fit", () => {
+  it("least-used first: across many sections, usage is distributed evenly across the pool", () => {
+    // 4 equal-duration clips, 100 same-tag sections. Max-min usage gap should be ≤ 1.
+    const clips = [
+      makeClip("hook-01", 8000),
+      makeClip("hook-02", 8000),
+      makeClip("hook-03", 8000),
+      makeClip("hook-04", 8000),
+    ];
+    const map = buildClipsByBaseName(clips);
+    const sections = Array.from({ length: 100 }, () => makeSection("Hook", 3000));
+    const matched = matchSections(sections, map);
+    const usage = new Map<string, number>();
+    for (const m of matched) {
+      const id = m.clips[0]!.clipId;
+      usage.set(id, (usage.get(id) ?? 0) + 1);
+    }
+    expect(usage.size).toBe(4);
+    const counts = [...usage.values()];
+    expect(Math.max(...counts) - Math.min(...counts)).toBeLessThanOrEqual(1);
+  });
+
+  it("cooldown window: no clip reused within (poolSize − 1) consecutive sections", () => {
+    // Pool of 5 → cooldown = 4. Across 50 sections, no clipId repeats inside any window of 5.
+    const clips = [
+      makeClip("hook-01", 8000),
+      makeClip("hook-02", 8000),
+      makeClip("hook-03", 8000),
+      makeClip("hook-04", 8000),
+      makeClip("hook-05", 8000),
+    ];
+    const map = buildClipsByBaseName(clips);
+    const sections = Array.from({ length: 50 }, () => makeSection("Hook", 3000));
+    for (let trial = 0; trial < 50; trial++) {
+      const ids = matchSections(sections, map).map((m) => m.clips[0]!.clipId);
+      for (let i = 0; i + 5 <= ids.length; i++) {
+        expect(new Set(ids.slice(i, i + 5)).size).toBe(5);
+      }
+    }
+  });
+
+  it("shortest-fit reservation: long clips are reserved for sections that need them", () => {
+    // Mix of short and long clips; short sections should consume the short clips so long
+    // sections still have long clips available. With 4 short (4s) and 4 long (10s) clips,
+    // 4 short sections (3s) and 4 long sections (8s), the short sections should never
+    // pick a 10s clip while a 4s clip is still least-used.
+    const clips = [
+      makeClip("hook-01", 4000), makeClip("hook-02", 4000),
+      makeClip("hook-03", 4000), makeClip("hook-04", 4000),
+      makeClip("hook-05", 10000), makeClip("hook-06", 10000),
+      makeClip("hook-07", 10000), makeClip("hook-08", 10000),
+    ];
+    const map = buildClipsByBaseName(clips);
+    const shortIds = new Set(["hook-01", "hook-02", "hook-03", "hook-04"]);
+    const sections: ParsedSection[] = [
+      makeSection("Hook", 3000), makeSection("Hook", 3000),
+      makeSection("Hook", 3000), makeSection("Hook", 3000),
+      makeSection("Hook", 8000), makeSection("Hook", 8000),
+      makeSection("Hook", 8000), makeSection("Hook", 8000),
+    ];
+    for (let trial = 0; trial < 50; trial++) {
+      const matched = matchSections(sections, map);
+      // First 4 (short) sections should pick from the short pool.
+      for (let i = 0; i < 4; i++) {
+        expect(shortIds.has(matched[i]!.clips[0]!.clipId)).toBe(true);
+      }
+    }
+  });
+});
+
 describe("buildManualChain", () => {
   const clipA = { id: "a", fileId: "a-key", durationMs: 2500 } as ClipMetadata;
   const clipB = { id: "b", fileId: "b-key", durationMs: 3400 } as ClipMetadata;
@@ -294,5 +375,54 @@ describe("buildManualChain", () => {
     expect(chain[0]!.clipId).toBe("placeholder");
     expect(chain[0]!.fileId).toBe("");
     expect(chain[0]!.speedFactor).toBe(1);
+  });
+});
+
+describe("matchSections — absolute positioning", () => {
+  it("propagates startMs and endMs from the input ParsedSection", () => {
+    const clips = [makeClip("hook-01", 5000)];
+    const map = buildClipsByBaseName(clips);
+    const ps: ParsedSection = {
+      lineNumber: 1,
+      startTime: 12.5,           // 12500ms
+      endTime: 16.0,             // 16000ms
+      tag: "Hook",
+      scriptText: "x",
+      durationMs: 3500,
+    };
+    const matched = matchSections([ps], map)[0]!;
+    expect(matched.startMs).toBe(12500);
+    expect(matched.endMs).toBe(16000);
+    expect(matched.durationMs).toBe(3500);
+  });
+
+  it("propagates startMs/endMs even for placeholder (no matching tag) sections", () => {
+    const ps: ParsedSection = {
+      lineNumber: 1,
+      startTime: 5,
+      endTime: 8,
+      tag: "unknown",
+      scriptText: "x",
+      durationMs: 3000,
+    };
+    const matched = matchSections([ps], new Map())[0]!;
+    expect(matched.clips[0]!.isPlaceholder).toBe(true);
+    expect(matched.startMs).toBe(5000);
+    expect(matched.endMs).toBe(8000);
+  });
+
+  it("propagates startMs/endMs for zero-duration sections", () => {
+    const ps: ParsedSection = {
+      lineNumber: 1,
+      startTime: 7,
+      endTime: 7,
+      tag: "Hook",
+      scriptText: "x",
+      durationMs: 0,
+    };
+    const matched = matchSections([ps], new Map())[0]!;
+    expect(matched.startMs).toBe(7000);
+    expect(matched.endMs).toBe(7000);
+    expect(matched.durationMs).toBe(0);
   });
 });
