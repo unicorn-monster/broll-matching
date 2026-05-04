@@ -12,13 +12,11 @@ interface TrackClipsProps {
 }
 
 export function TrackClips({ timeline, pxPerSecond, selectedIndex, onSelect }: TrackClipsProps) {
-  let cursor = 0;
   return (
     <div className="relative h-[90px] flex items-stretch bg-muted/10">
       {timeline.map((section, i) => {
-        const left = cursor;
+        const left = (section.startMs / 1000) * pxPerSecond;
         const width = (section.durationMs / 1000) * pxPerSecond;
-        cursor += width;
         return (
           <div
             key={i}

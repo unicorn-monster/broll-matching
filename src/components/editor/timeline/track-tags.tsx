@@ -12,13 +12,11 @@ interface TrackTagsProps {
 }
 
 export function TrackTags({ timeline, pxPerSecond, selectedIndex, onSelect }: TrackTagsProps) {
-  let cursor = 0;
   return (
     <div className="relative h-10 flex items-stretch">
       {timeline.map((s, i) => {
-        const left = cursor;
+        const left = (s.startMs / 1000) * pxPerSecond;
         const width = (s.durationMs / 1000) * pxPerSecond;
-        cursor += width;
         const isMissing = s.clips.some((c) => c.isPlaceholder);
         const isHighSpeed =
           s.clips.length > 0 && Math.max(...s.clips.map((c) => c.speedFactor)) > HIGH_SPEED_THRESHOLD;

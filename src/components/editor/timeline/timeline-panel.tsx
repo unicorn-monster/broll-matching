@@ -39,11 +39,9 @@ export function TimelinePanel() {
   );
 
   const totalMs = useMemo(() => {
-    let t = 0;
-    if (timeline) t = timeline.reduce((sum, s) => sum + s.durationMs, 0);
-    else if (audioDuration) t = audioDuration * 1000;
-    return Math.max(t, overlaysMaxMs);
-  }, [timeline, audioDuration, overlaysMaxMs]);
+    const audioMs = audioDuration ? audioDuration * 1000 : 0;
+    return Math.max(audioMs, overlaysMaxMs);
+  }, [audioDuration, overlaysMaxMs]);
 
   const effectivePxPerSec = pxPerSec ?? (() => {
     if (totalMs <= 0) return 30;
