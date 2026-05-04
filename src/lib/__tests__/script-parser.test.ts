@@ -121,3 +121,76 @@ describe("parseScript — SRT-style", () => {
     expect(result.errors).toHaveLength(0);
   });
 });
+
+describe("parseScript — overlap detection", () => {
+  it("errors when two lines overlap, pointing at the later line", () => {
+    const input = [
+      "00:00:01,000 --> 00:00:05,000 || Hook || first",
+      "00:00:03,000 --> 00:00:07,000 || Hook || overlaps first",
+    ].join("\n");
+    const result = parseScript(input, BASE_NAMES);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]!.line).toBe(2);
+    expect(result.errors[0]!.message).toMatch(/overlap/i);
+  });
+
+  it("accepts adjacent lines that touch (curr.startMs === prev.endMs) — no overlap", () => {
+    const input = [
+      "00:00:01,000 --> 00:00:05,000 || Hook || first",
+      "00:00:05,000 --> 00:00:07,000 || Hook || touches",
+    ].join("\n");
+    const result = parseScript(input, BASE_NAMES);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it("accepts lines with a gap between them", () => {
+    const input = [
+      "00:00:01,000 --> 00:00:05,000 || Hook || first",
+      "00:00:10,000 --> 00:00:12,000 || Hook || far later",
+    ].join("\n");
+    const result = parseScript(input, BASE_NAMES);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it("detects overlap regardless of line order in the script", () => {
+    // Second-listed line starts earlier and overlaps the first line.
+    const input = [
+      "00:00:05,000 --> 00:00:09,000 || Hook || late line",
+      "00:00:00,000 --> 00:00:06,000 || Hook || early line, overlaps",
+    ].join("\n");
+    const result = parseScript(input, BASE_NAMES);
+    expect(result.errors.length).toBeGreaterThanOrEqual(1);
+    expect(result.errors.some((e) => /overlap/i.test(e.message))).toBe(true);
+  });
+});
+
+describe("parseScript — audio bound check", () => {
+  it("errors when endTime exceeds audioDurationMs", () => {
+    const result = parseScript(
+      "00:00:08,000 --> 00:00:12,000 || Hook || past end",
+      BASE_NAMES,
+      10_000, // audio is 10s, line ends at 12s
+    );
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]!.line).toBe(1);
+    expect(result.errors[0]!.message).toMatch(/audio/i);
+  });
+
+  it("accepts endTime equal to audioDurationMs (boundary inclusive)", () => {
+    const result = parseScript(
+      "00:00:08,000 --> 00:00:10,000 || Hook || ends right at end",
+      BASE_NAMES,
+      10_000,
+    );
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it("skips bound check when audioDurationMs is null (audio not loaded yet)", () => {
+    const result = parseScript(
+      "00:00:08,000 --> 00:00:120,000 || Hook || would normally fail",
+      BASE_NAMES,
+      null,
+    );
+    expect(result.errors.filter((e) => /audio/i.test(e.message))).toHaveLength(0);
+  });
+});

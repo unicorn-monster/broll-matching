@@ -41,7 +41,11 @@ function parseTimestampToMs(
   return ((hours * 3600 + mins * 60 + secs) * 1000) + millis;
 }
 
-export function parseScript(text: string, availableBaseNames: Set<string>): ParseResult {
+export function parseScript(
+  text: string,
+  availableBaseNames: Set<string>,
+  audioDurationMs: number | null = null,
+): ParseResult {
   const sections: ParsedSection[] = [];
   const errors: { line: number; message: string }[] = [];
   const warnings: { line: number; message: string }[] = [];
@@ -106,5 +110,37 @@ export function parseScript(text: string, availableBaseNames: Set<string>): Pars
     });
   });
 
+  // Overlap detection: sort by startTime, check adjacent pairs.
+  const sorted = [...sections].sort((a, b) => a.startTime - b.startTime);
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1]!;
+    const curr = sorted[i]!;
+    if (curr.startTime < prev.endTime) {
+      errors.push({
+        line: curr.lineNumber,
+        message: `Line ${curr.lineNumber}: time range [${formatTimestamp(curr.startTime)}, ${formatTimestamp(curr.endTime)}] overlaps line ${prev.lineNumber} [${formatTimestamp(prev.startTime)}, ${formatTimestamp(prev.endTime)}]`,
+      });
+    }
+  }
+
+  if (audioDurationMs !== null) {
+    for (const s of sections) {
+      const endMs = s.endTime * 1000;
+      if (endMs > audioDurationMs) {
+        errors.push({
+          line: s.lineNumber,
+          message: `Line ${s.lineNumber}: end time ${formatTimestamp(s.endTime)} exceeds audio duration ${formatTimestamp(audioDurationMs / 1000)}`,
+        });
+      }
+    }
+  }
+
   return { sections, errors, warnings };
+}
+
+function formatTimestamp(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${s.toFixed(3).padStart(6, "0")}`;
 }
