@@ -17,7 +17,7 @@ interface ExportDialogProps {
 }
 
 export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
-  const { audioFile, timeline } = useBuildState();
+  const { audioFile, audioDuration, timeline } = useBuildState();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
@@ -28,7 +28,11 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
           </DialogDescription>
         </DialogHeader>
         {audioFile && timeline ? (
-          <RenderTrigger audioFile={audioFile} timeline={timeline} />
+          <RenderTrigger
+            audioFile={audioFile}
+            audioDurationMs={audioDuration ? audioDuration * 1000 : 0}
+            timeline={timeline}
+          />
         ) : (
           <p className="text-sm text-muted-foreground">Audio + script required to export.</p>
         )}

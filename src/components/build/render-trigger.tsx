@@ -8,89 +8,20 @@ import type { MatchedSection } from "@/lib/auto-match";
 
 interface RenderTriggerProps {
   audioFile: File;
+  audioDurationMs: number;
   timeline: MatchedSection[];
 }
 
-type Stage = "loading" | "rendering";
-
-const LOAD_TIMEOUT_MS = 60_000;
-
-export function RenderTrigger({ audioFile, timeline }: RenderTriggerProps) {
-  const [stage, setStage] = useState<Stage | null>(null);
-  const [progress, setProgress] = useState(0);
-  const [elapsedSec, setElapsedSec] = useState(0);
+export function RenderTrigger({ audioFile, audioDurationMs, timeline }: RenderTriggerProps) {
   const [rendering, setRendering] = useState(false);
-  const [engineReady, setEngineReady] = useState(false);
+  const [stage, setStage] = useState<"uploading" | "rendering" | null>(null);
+  const [uploadPct, setUploadPct] = useState(0);
+  const [elapsedSec, setElapsedSec] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const engineReadyRef = useRef(false);
   const startedAtRef = useRef<number | null>(null);
-  const workerRef = useRef<Worker | null>(null);
+  const xhrRef = useRef<XMLHttpRequest | null>(null);
   const mediaPool = useMediaPool();
   const [outputSize, setOutputSize] = useState<OutputSize>({ width: 1080, height: 1350 });
-
-  useEffect(() => {
-    const worker = new Worker(new URL("@/workers/render-worker.ts", import.meta.url), { type: "module" });
-    workerRef.current = worker;
-
-    worker.onmessage = (e) => {
-      const d = e.data;
-      if (d.type === "loaded") {
-        engineReadyRef.current = true;
-        setEngineReady(true);
-      } else if (d.type === "stage") {
-        setStage(d.stage);
-        if (d.stage === "rendering") setProgress(0);
-      } else if (d.type === "progress") {
-        setProgress(d.overall);
-      } else if (d.type === "log") {
-        console.log("[ffmpeg]", d.message);
-      } else if (d.type === "load-error") {
-        console.error("[render] load-error:", d.message);
-        setError(`Failed to load render engine: ${d.message}. Open DevTools Console for details.`);
-        setRendering(false);
-        setStage(null);
-      } else if (d.type === "render-error") {
-        console.error("[render] render-error:", d.message);
-        setError(`Render failed: ${d.message}. Open DevTools Console for details.`);
-        setRendering(false);
-        setStage(null);
-      } else if (d.type === "done") {
-        const blob = new Blob([d.output], { type: "video/mp4" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `vsl-${Date.now()}.mp4`;
-        a.click();
-        URL.revokeObjectURL(url);
-        setRendering(false);
-        setStage(null);
-        setProgress(0);
-      }
-    };
-
-    worker.onerror = (ev) => {
-      console.error("[render-worker] onerror:", ev.message, ev.filename, ev.lineno);
-      setError(`Worker error: ${ev.message || "unknown"}. Open DevTools Console for details.`);
-      setRendering(false);
-      setStage(null);
-    };
-
-    worker.postMessage({ cmd: "load", baseURL: `${window.location.origin}/ffmpeg` });
-
-    const loadTimeout = setTimeout(() => {
-      if (!engineReadyRef.current) {
-        setError(
-          `Render engine did not load within ${LOAD_TIMEOUT_MS / 1000}s. Open DevTools Console + Network tab for details.`,
-        );
-      }
-    }, LOAD_TIMEOUT_MS);
-
-    return () => {
-      clearTimeout(loadTimeout);
-      worker.terminate();
-      workerRef.current = null;
-    };
-  }, []);
 
   useEffect(() => {
     if (!rendering) return;
@@ -104,41 +35,75 @@ export function RenderTrigger({ audioFile, timeline }: RenderTriggerProps) {
     return () => clearInterval(id);
   }, [rendering]);
 
-  async function startRender() {
-    const worker = workerRef.current;
-    if (!worker) return;
+  useEffect(() => {
+    return () => {
+      xhrRef.current?.abort();
+    };
+  }, []);
 
+  async function startRender() {
     setError(null);
     setRendering(true);
-    setStage(engineReady ? "rendering" : "loading");
-    setProgress(0);
+    setStage("uploading");
+    setUploadPct(0);
 
-    const keys = new Set(
-      timeline.flatMap((s) => s.clips.filter((c) => !c.isPlaceholder).map((c) => c.fileId)),
-    );
-    const clips: Record<string, ArrayBuffer> = {};
-    for (const key of keys) {
-      const file = mediaPool.getFile(key);
-      if (file) clips[key] = await file.arrayBuffer();
+    try {
+      const fd = new FormData();
+      fd.append("timeline", JSON.stringify(timeline));
+      fd.append("outputWidth", String(outputSize.width));
+      fd.append("outputHeight", String(outputSize.height));
+      fd.append("audioDurationMs", String(audioDurationMs));
+      fd.append("audio", audioFile, audioFile.name || "audio.mp3");
+
+      const usedFileIds = new Set(
+        timeline.flatMap((s) =>
+          s.clips.filter((c) => !c.isPlaceholder).map((c) => c.fileId),
+        ),
+      );
+      for (const fileId of usedFileIds) {
+        const file = mediaPool.getFile(fileId);
+        // Re-wrap with the fileId as the File.name so the server can map it back to
+        // timeline entries — the original File.name may not be the same as the fileId.
+        if (file) fd.append("clips", new File([file], fileId));
+      }
+
+      const blob = await postWithProgress("/api/render", fd, {
+        onUploadProgress: (loaded, total) => {
+          if (total > 0) setUploadPct(loaded / total);
+        },
+        onUploadComplete: () => setStage("rendering"),
+        registerXhr: (xhr) => { xhrRef.current = xhr; },
+      });
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `vsl-${Date.now()}.mp4`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[render]", message);
+      setError(`Render failed: ${message}`);
+    } finally {
+      setRendering(false);
+      setStage(null);
+      setUploadPct(0);
+      xhrRef.current = null;
     }
-
-    const audioBuffer = await audioFile.arrayBuffer();
-
-    worker.postMessage(
-      { cmd: "render", timeline, audioBuffer, clips, outputWidth: outputSize.width, outputHeight: outputSize.height },
-      [audioBuffer, ...Object.values(clips)],
-    );
   }
 
-  const label = stage === "loading" ? "Loading render engine…" : "Rendering video…";
-  const pct = Math.round(progress * 100);
-  const showBar = stage === "rendering";
+  const showUploadBar = stage === "uploading";
+  const uploadPctRounded = Math.round(uploadPct * 100);
+  const label =
+    stage === "uploading"
+      ? `Uploading clips… ${uploadPctRounded}%`
+      : stage === "rendering"
+        ? "Rendering on server (ffmpeg native)…"
+        : "";
 
   return (
     <div className="space-y-3">
-      {!rendering && !engineReady && !error && (
-        <p className="text-xs text-muted-foreground">Preparing render engine in background…</p>
-      )}
       {error && (
         <p className="text-xs text-destructive whitespace-pre-wrap">{error}</p>
       )}
@@ -151,16 +116,13 @@ export function RenderTrigger({ audioFile, timeline }: RenderTriggerProps) {
           <div className="h-2 bg-muted rounded-full overflow-hidden">
             <div
               className={
-                showBar
+                showUploadBar
                   ? "h-full bg-primary transition-[width] duration-150"
                   : "h-full bg-primary/40 animate-pulse w-1/3"
               }
-              style={showBar ? { width: `${pct}%` } : undefined}
+              style={showUploadBar ? { width: `${uploadPctRounded}%` } : undefined}
             />
           </div>
-          {showBar && (
-            <p className="text-xs text-muted-foreground text-center tabular-nums">{pct}%</p>
-          )}
         </div>
       )}
       <OutputSizeSelect value={outputSize} onChange={setOutputSize} />
@@ -180,4 +142,50 @@ function formatElapsed(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
   return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+interface PostOpts {
+  onUploadProgress: (loaded: number, total: number) => void;
+  onUploadComplete: () => void;
+  registerXhr: (xhr: XMLHttpRequest) => void;
+}
+
+/**
+ * POST FormData with upload-progress tracking. `fetch` cannot report upload progress in
+ * any browser as of 2026, so XHR is the only way to drive a real upload bar. Resolves to
+ * a Blob for `application/octet-stream`-style downloads (response body is the rendered MP4).
+ */
+function postWithProgress(url: string, body: FormData, opts: PostOpts): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    xhr.responseType = "blob";
+    xhr.upload.onprogress = (ev) => {
+      if (ev.lengthComputable) opts.onUploadProgress(ev.loaded, ev.total);
+    };
+    xhr.upload.onload = () => opts.onUploadComplete();
+    xhr.onerror = () => reject(new Error("Network error during upload"));
+    xhr.onabort = () => reject(new Error("Upload aborted"));
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(xhr.response as Blob);
+      } else {
+        // Server returned JSON error — read it through a FileReader since responseType is blob.
+        const blob = xhr.response as Blob;
+        blob.text().then(
+          (text) => {
+            try {
+              const parsed = JSON.parse(text) as { error?: string };
+              reject(new Error(parsed.error ?? `Server error ${xhr.status}`));
+            } catch {
+              reject(new Error(`Server error ${xhr.status}: ${text.slice(0, 300)}`));
+            }
+          },
+          () => reject(new Error(`Server error ${xhr.status}`)),
+        );
+      }
+    };
+    opts.registerXhr(xhr);
+    xhr.send(body);
+  });
 }
