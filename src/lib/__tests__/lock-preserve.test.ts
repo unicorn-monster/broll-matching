@@ -22,9 +22,12 @@ const makeMatched = (
   durationMs: number,
   clipIds: string[],
   userLocked = false,
+  startMs = 0,
 ): MatchedSection => ({
   sectionIndex: 0,
   tag,
+  startMs,
+  endMs: startMs + durationMs,
   durationMs,
   clips: clipIds.map((id) => ({
     clipId: id,
@@ -198,5 +201,37 @@ describe("preserveLocks — neighbor avoidance with locks", () => {
         expect(newTimeline[i]!.clips[0]!.clipId).not.toBe(newTimeline[i - 1]!.clips[0]!.clipId);
       }
     }
+  });
+});
+
+describe("preserveLocks — absolute positioning", () => {
+  it("preserved entry takes startMs/endMs from the new ParsedSection (not the old lock)", () => {
+    const c1 = makeClip("c1", "hook-01", 5000);
+    const old: MatchedSection[] = [
+      { ...makeMatched("hook", 5000, ["c1"], true), startMs: 1000, endMs: 6000 },
+    ];
+    // New script: same tag/duration but moved to a different absolute position.
+    const newSections: ParsedSection[] = [
+      { lineNumber: 1, startTime: 30, endTime: 35, tag: "hook", scriptText: "", durationMs: 5000 },
+    ];
+    const map = new Map([["hook", [c1]]]);
+
+    const result = preserveLocks(old, newSections, map);
+
+    expect(result.preservedCount).toBe(1);
+    expect(result.newTimeline[0]!.startMs).toBe(30000);
+    expect(result.newTimeline[0]!.endMs).toBe(35000);
+  });
+
+  it("auto-matched (non-preserved) entries also carry startMs/endMs from the new ParsedSection", () => {
+    const newSections: ParsedSection[] = [
+      { lineNumber: 1, startTime: 5, endTime: 8, tag: "hook", scriptText: "", durationMs: 3000 },
+    ];
+    const map = new Map([["hook", [makeClip("c1", "hook-01", 5000)]]]);
+
+    const result = preserveLocks([], newSections, map);
+
+    expect(result.newTimeline[0]!.startMs).toBe(5000);
+    expect(result.newTimeline[0]!.endMs).toBe(8000);
   });
 });

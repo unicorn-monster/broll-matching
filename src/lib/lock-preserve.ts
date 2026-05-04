@@ -52,13 +52,16 @@ export function preserveLocks(
       const newSpeed =
         ns.durationMs > 0 && totalPickedMs > 0 ? totalPickedMs / ns.durationMs : 1;
       const tagKey = ns.tag.toLowerCase();
-      const fullPool = clipsByBaseName.get(tagKey) ?? [];
       for (const c of head.clips) {
-        if (!c.isPlaceholder) markUsed(state, tagKey, fullPool, c.clipId);
+        if (!c.isPlaceholder) markUsed(state, tagKey, c.clipId);
       }
       newTimeline.push({
         sectionIndex: i,
         tag: ns.tag,
+        // Preserved locks bind to the *new* line's absolute window — the picks travel
+        // with the user, the position comes from the freshly-parsed script.
+        startMs: ns.startTime * 1000,
+        endMs: ns.endTime * 1000,
         durationMs: ns.durationMs,
         clips: head.clips.map((c) => ({
           ...c,
