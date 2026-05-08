@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, X } from "lucide-react";
+import { Search, Trash2, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useMediaPool } from "@/state/media-pool";
 import { deriveBaseName } from "@/lib/broll";
@@ -17,6 +17,7 @@ interface ClipGridProps {
   clips: Clip[];
   fileQuery: string;
   onFileQueryChange: (q: string) => void;
+  onDeleteClip?: (clipId: string) => void;
 }
 
 function ThumbnailImage({ clipId }: { clipId: string }) {
@@ -34,9 +35,10 @@ function ThumbnailImage({ clipId }: { clipId: string }) {
 interface ClipTileProps {
   clip: Clip;
   onPreview: (key: string) => void;
+  onDelete?: (clipId: string) => void;
 }
 
-function ClipTile({ clip, onPreview }: ClipTileProps) {
+function ClipTile({ clip, onPreview, onDelete }: ClipTileProps) {
   const dragProps = useOverlayDragSource({
     clipId: clip.id,
     fileId: clip.fileId,
@@ -56,6 +58,23 @@ function ClipTile({ clip, onPreview }: ClipTileProps) {
         <div className="absolute bottom-1 right-1 bg-black/60 text-white text-xs px-1 rounded">
           {formatMs(clip.durationMs)}
         </div>
+        {onDelete ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(clip.id);
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+            onDragStart={(e) => e.preventDefault()}
+            draggable={false}
+            className="absolute top-1 right-1 p-1 rounded bg-black/60 text-white opacity-0 group-hover:opacity-100 hover:bg-destructive hover:text-destructive-foreground transition"
+            aria-label={`Delete ${clip.brollName}`}
+            title="Delete clip"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        ) : null}
       </div>
       <div className="p-1.5">
         <p className="text-xs truncate font-mono">{clip.brollName}</p>
@@ -64,7 +83,7 @@ function ClipTile({ clip, onPreview }: ClipTileProps) {
   );
 }
 
-export function ClipGrid({ clips, fileQuery, onFileQueryChange }: ClipGridProps) {
+export function ClipGrid({ clips, fileQuery, onFileQueryChange, onDeleteClip }: ClipGridProps) {
   const { setPreviewClipKey } = useBuildState();
 
   const groups = clips.reduce<Record<string, Clip[]>>((acc, clip) => {
@@ -127,6 +146,7 @@ export function ClipGrid({ clips, fileQuery, onFileQueryChange }: ClipGridProps)
                 key={clip.id}
                 clip={clip}
                 onPreview={setPreviewClipKey}
+                {...(onDeleteClip ? { onDelete: onDeleteClip } : {})}
               />
             ))}
           </div>

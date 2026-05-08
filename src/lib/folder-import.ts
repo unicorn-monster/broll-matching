@@ -46,7 +46,16 @@ export async function* walkDirectoryHandle(
   }
 }
 
-export async function walkDirectoryEntry(entry: FileSystemDirectoryEntry): Promise<File[]> {
+export interface WalkStats {
+  attempted: number;
+  failed: number;
+  failedNames: string[];
+}
+
+export async function walkDirectoryEntry(
+  entry: FileSystemDirectoryEntry,
+  stats?: WalkStats,
+): Promise<File[]> {
   const files: File[] = [];
   const reader = entry.createReader();
   let batch: FileSystemEntry[];
@@ -54,11 +63,27 @@ export async function walkDirectoryEntry(entry: FileSystemDirectoryEntry): Promi
     batch = await new Promise<FileSystemEntry[]>((res, rej) => reader.readEntries(res, rej));
     for (const e of batch) {
       if (e.isFile) {
-        files.push(
-          await new Promise<File>((res, rej) => (e as FileSystemFileEntry).file(res, rej)),
-        );
+        if (stats) stats.attempted++;
+        try {
+          const file = await new Promise<File>((res, rej) =>
+            (e as FileSystemFileEntry).file(res, rej),
+          );
+          files.push(file);
+        } catch (err) {
+          if (stats) {
+            stats.failed++;
+            stats.failedNames.push(e.name);
+          }
+          if (typeof console !== "undefined") {
+            console.warn(`[folder-import] could not read ${e.fullPath || e.name}:`, err);
+          }
+        }
       } else if (e.isDirectory) {
-        files.push(...(await walkDirectoryEntry(e as FileSystemDirectoryEntry)));
+        try {
+          files.push(...(await walkDirectoryEntry(e as FileSystemDirectoryEntry, stats)));
+        } catch {
+          // unreadable subdirectory — skip
+        }
       }
     }
   } while (batch.length > 0);

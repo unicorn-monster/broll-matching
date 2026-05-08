@@ -4,6 +4,7 @@ import { SiteHeader } from "@/components/site-header";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { MediaPoolProvider } from "@/state/media-pool";
+import { BuildStateProvider } from "@/components/build/build-state-context";
 import type { Metadata } from "next";
 
 const geistSans = Geist({
@@ -99,7 +100,9 @@ export default function RootLayout({
         >
           <SiteHeader />
           <MediaPoolProvider>
-            <main id="main-content">{children}</main>
+            <BuildStateProvider>
+              <main id="main-content">{children}</main>
+            </BuildStateProvider>
           </MediaPoolProvider>
           <Toaster richColors position="top-right" />
         </ThemeProvider>

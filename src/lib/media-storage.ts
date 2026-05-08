@@ -118,6 +118,19 @@ export async function removeFolder(folderId: string): Promise<void> {
   db.close();
 }
 
+export async function removeClip(clipId: string): Promise<void> {
+  const db = await openMediaDB();
+  const tx = db.transaction(["clips", "files"], "readwrite");
+  const clipsStore = tx.objectStore("clips");
+  const clip = (await clipsStore.get(clipId)) as ClipRecord | undefined;
+  await Promise.all([
+    clipsStore.delete(clipId),
+    clip ? tx.objectStore("files").delete(clip.fileId) : Promise.resolve(),
+    tx.done,
+  ]);
+  db.close();
+}
+
 export async function renameFolder(id: string, name: string): Promise<void> {
   const db = await openMediaDB();
   const tx = db.transaction("folders", "readwrite");

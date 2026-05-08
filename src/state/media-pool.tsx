@@ -32,6 +32,7 @@ interface MediaPool {
   addFolder: (name: string, files: File[], options?: { mergeIntoFolderId?: string }) => Promise<AddFolderResult>;
   renameFolder: (id: string, name: string) => Promise<void>;
   removeFolder: (id: string) => Promise<void>;
+  removeClip: (clipId: string) => Promise<void>;
   reset: () => Promise<void>;
 
   getFile: (fileId: string) => File | null;
@@ -227,6 +228,31 @@ export function MediaPoolProvider({ children }: { children: React.ReactNode }) {
     [videos],
   );
 
+  const removeClip = useCallback(
+    async (clipId: string) => {
+      const { removeClip: removeClipIDB } = await import("@/lib/media-storage");
+      const clip = videos.find((v) => v.id === clipId);
+      if (!clip) return;
+
+      await removeClipIDB(clipId);
+
+      const cache = urlCacheRef.current;
+      const url = cache.get(clip.fileId);
+      if (url) {
+        URL.revokeObjectURL(url);
+        cache.delete(clip.fileId);
+      }
+
+      setVideos((prev) => prev.filter((v) => v.id !== clipId));
+      setFileMap((prev) => {
+        const next = new Map(prev);
+        next.delete(clip.fileId);
+        return next;
+      });
+    },
+    [videos],
+  );
+
   const renameFolder = useCallback(async (id: string, name: string) => {
     const { renameFolder: renameFolderIDB } = await import("@/lib/media-storage");
     await renameFolderIDB(id, name);
@@ -256,11 +282,12 @@ export function MediaPoolProvider({ children }: { children: React.ReactNode }) {
       addFolder,
       renameFolder,
       removeFolder,
+      removeClip,
       reset,
       getFile,
       getFileURL,
     }),
-    [videos, fileMap, folders, activeFolderId, hydrated, addFolder, renameFolder, removeFolder, reset, getFile, getFileURL],
+    [videos, fileMap, folders, activeFolderId, hydrated, addFolder, renameFolder, removeFolder, removeClip, reset, getFile, getFileURL],
   );
 
   return <MediaPoolContext.Provider value={value}>{children}</MediaPoolContext.Provider>;

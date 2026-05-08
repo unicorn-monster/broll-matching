@@ -20,6 +20,7 @@ interface FoldersGridProps {
   onDropFolders: (entries: FileSystemDirectoryEntry[]) => void;
   onRename: (id: string, name: string) => Promise<void> | void;
   onDelete: (id: string) => Promise<void> | void;
+  onClearAll?: () => void;
   busyAdding?: boolean;
   busyProgress?: { done: number; total: number } | null;
 }
@@ -42,6 +43,7 @@ export function FoldersGrid({
   onDropFolders,
   onRename,
   onDelete,
+  onClearAll,
   busyAdding,
   busyProgress,
 }: FoldersGridProps) {
@@ -108,6 +110,19 @@ export function FoldersGrid({
             ? `Adding ${busyProgress.done}/${busyProgress.total}…`
             : "Add Folder"}
         </button>
+        {onClearAll && folders.length > 0 ? (
+          <button
+            type="button"
+            onClick={onClearAll}
+            disabled={busyAdding}
+            className="inline-flex items-center gap-1 px-2 py-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive shrink-0 disabled:opacity-50 disabled:pointer-events-none"
+            aria-label="Clear all folders"
+            title="Clear all folders"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Clear all
+          </button>
+        ) : null}
       </div>
 
       <div className="flex-1 overflow-y-auto p-3">
