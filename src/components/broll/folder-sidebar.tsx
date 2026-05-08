@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, Pencil, Trash2, FolderOpen, Library } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Plus, Pencil, Trash2, FolderOpen, Library, Search, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -11,32 +11,34 @@ interface FolderSidebarProps {
   folders: Folder[];
   activeFolderId: string | null;
   onSelect: (id: string | null) => void;
-  onCreate: (name: string) => Promise<void>;
+  onAdd: () => void;
   onRename: (id: string, name: string) => Promise<void>;
-  onDelete: (id: string) => Promise<void>;
+  onDelete: (id: string) => void;
   totalClipCount: number;
+  busyAdding?: boolean;
+  busyProgress?: { done: number; total: number } | null;
 }
 
 export function FolderSidebar({
   folders,
   activeFolderId,
   onSelect,
-  onCreate,
+  onAdd,
   onRename,
   onDelete,
   totalClipCount,
+  busyAdding = false,
+  busyProgress = null,
 }: FolderSidebarProps) {
-  const [newName, setNewName] = useState("");
-  const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  const [query, setQuery] = useState("");
 
-  async function handleCreate() {
-    if (!newName.trim()) return;
-    await onCreate(newName.trim());
-    setNewName("");
-    setAdding(false);
-  }
+  const filteredFolders = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return folders;
+    return folders.filter((f) => f.name.toLowerCase().includes(q));
+  }, [folders, query]);
 
   async function handleRename(id: string) {
     if (!editName.trim()) return;
@@ -59,9 +61,26 @@ export function FolderSidebar({
         <span className="text-xs text-muted-foreground">{totalClipCount}</span>
       </button>
 
-      <div className="p-3 text-xs uppercase tracking-wide text-muted-foreground mt-2">Folders</div>
+      <div className="px-3 pt-2 pb-1 flex items-center justify-between text-xs uppercase tracking-wide text-muted-foreground mt-2">
+        <span>Folders</span>
+      </div>
+      <div className="px-2 pb-1">
+        <div className="relative">
+          <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search folders"
+            className="h-7 text-sm pl-7"
+          />
+        </div>
+      </div>
 
-      {folders.map((f) => (
+      {filteredFolders.length === 0 && query ? (
+        <div className="px-3 py-2 text-xs text-muted-foreground">No folders match &ldquo;{query}&rdquo;</div>
+      ) : null}
+
+      {filteredFolders.map((f) => (
         <div key={f.id} className="group relative">
           {editingId === f.id ? (
             <div className="px-2 py-1 flex gap-1">
@@ -75,7 +94,9 @@ export function FolderSidebar({
                 autoFocus
                 className="h-7 text-sm"
               />
-              <Button size="sm" variant="ghost" onClick={() => handleRename(f.id)} className="h-7 px-2">✓</Button>
+              <Button size="sm" variant="ghost" onClick={() => handleRename(f.id)} className="h-7 px-2">
+                ✓
+              </Button>
             </div>
           ) : (
             <button
@@ -89,39 +110,38 @@ export function FolderSidebar({
           )}
           <div className="absolute right-2 top-1.5 hidden group-hover:flex gap-1">
             <button
-              onClick={() => { setEditingId(f.id); setEditName(f.name); }}
+              onClick={() => {
+                setEditingId(f.id);
+                setEditName(f.name);
+              }}
               className="text-muted-foreground hover:text-foreground"
+              aria-label="Rename folder"
             >
               <Pencil className="w-3 h-3" />
             </button>
-            <button onClick={() => onDelete(f.id)} className="text-muted-foreground hover:text-destructive">
+            <button
+              onClick={() => onDelete(f.id)}
+              className="text-muted-foreground hover:text-destructive"
+              aria-label="Delete folder"
+            >
               <Trash2 className="w-3 h-3" />
             </button>
           </div>
         </div>
       ))}
 
-      <div className="p-2 mt-auto border-t border-border">
-        {adding ? (
-          <div className="flex gap-1">
-            <Input
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleCreate();
-                if (e.key === "Escape") setAdding(false);
-              }}
-              autoFocus
-              placeholder="Folder name"
-              className="h-7 text-sm"
-            />
-            <Button size="sm" variant="ghost" onClick={handleCreate} className="h-7 px-2">✓</Button>
+      <div className="p-2 mt-auto border-t border-border space-y-2">
+        {busyAdding && busyProgress ? (
+          <div className="text-xs text-muted-foreground flex items-center gap-2 px-1">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            <span>
+              Loading {busyProgress.done}/{busyProgress.total}
+            </span>
           </div>
-        ) : (
-          <Button variant="ghost" size="sm" className="w-full" onClick={() => setAdding(true)}>
-            <Plus className="w-4 h-4 mr-1" /> Add Folder
-          </Button>
-        )}
+        ) : null}
+        <Button variant="ghost" size="sm" className="w-full" onClick={onAdd} disabled={busyAdding}>
+          <Plus className="w-4 h-4 mr-1" /> Add Folder
+        </Button>
       </div>
     </aside>
   );

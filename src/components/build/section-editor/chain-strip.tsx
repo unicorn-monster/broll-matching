@@ -1,0 +1,104 @@
+"use client";
+
+import { Plus, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useMediaPool } from "@/state/media-pool";
+import { formatMs } from "@/lib/format-time";
+import type { ClipMetadata } from "@/lib/auto-match";
+
+/**
+ * `activeSlot` semantics:
+ *   - integer in [0, picks.length): user is editing that slot
+ *   - picks.length: user is adding a new slot (the "+" tile)
+ *   - null: no slot active
+ */
+interface ChainStripProps {
+  picks: ClipMetadata[];
+  activeSlot: number | null;
+  onActivateSlot: (slot: number) => void;
+  onActivateAdd: () => void;
+  onRemoveSlot: (slot: number) => void;
+}
+
+export function ChainStrip({ picks, activeSlot, onActivateSlot, onActivateAdd, onRemoveSlot }: ChainStripProps) {
+  return (
+    <div className="flex gap-2 overflow-x-auto p-1 border-b border-border">
+      {picks.map((clip, i) => (
+        <SlotTile
+          key={`${i}-${clip.id}`}
+          clip={clip}
+          slotIndex={i}
+          active={activeSlot === i}
+          onClick={() => onActivateSlot(i)}
+          onRemove={() => onRemoveSlot(i)}
+        />
+      ))}
+      <button
+        type="button"
+        onClick={onActivateAdd}
+        className={cn(
+          "shrink-0 w-20 h-28 rounded-md border-2 border-dashed flex items-center justify-center transition",
+          activeSlot === picks.length
+            ? "border-primary text-primary"
+            : "border-border text-muted-foreground hover:border-muted-foreground",
+        )}
+        aria-label="Add clip to chain"
+      >
+        <Plus className="w-6 h-6" />
+      </button>
+    </div>
+  );
+}
+
+function SlotTile({
+  clip,
+  slotIndex,
+  active,
+  onClick,
+  onRemove,
+}: {
+  clip: ClipMetadata;
+  slotIndex: number;
+  active: boolean;
+  onClick: () => void;
+  onRemove: () => void;
+}) {
+  const mediaPool = useMediaPool();
+  // Synchronous lookup — pool manages URL lifetime, no cleanup needed
+  const src = mediaPool.getFileURL(clip.fileId);
+
+  return (
+    <div className="relative shrink-0 w-20 h-28">
+      <button
+        type="button"
+        onClick={onClick}
+        className={cn(
+          "w-full h-full rounded-md border overflow-hidden transition",
+          active ? "border-primary ring-2 ring-primary/40" : "border-border hover:border-muted-foreground",
+        )}
+        aria-label={`Slot ${slotIndex + 1}: ${clip.brollName}`}
+      >
+        <div className="absolute top-0 left-0 right-0 bg-black/60 text-white text-[10px] px-1 py-0.5 z-10">
+          slot {slotIndex + 1}
+        </div>
+        <div className="w-full h-full bg-muted">
+          {src && (
+            // Video shows first frame automatically when paused/not playing
+            <video src={src} preload="metadata" muted playsInline className="w-full h-full object-cover" />
+          )}
+        </div>
+        <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] px-1 py-0.5 truncate">
+          {formatMs(clip.durationMs)}
+        </div>
+      </button>
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onRemove(); }}
+        className="absolute top-1 right-1 z-20 bg-black/60 hover:bg-red-500 text-white rounded p-0.5"
+        aria-label={`Remove slot ${slotIndex + 1}`}
+      >
+        <X className="w-3 h-3" />
+      </button>
+    </div>
+  );
+}

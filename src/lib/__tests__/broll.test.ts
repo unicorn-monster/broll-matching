@@ -3,7 +3,6 @@ import {
   deriveBaseName,
   isValidBrollName,
   filenameToBrollName,
-  BROLL_NAME_PATTERN,
 } from "../broll";
 
 describe("deriveBaseName", () => {

@@ -1,5 +1,7 @@
-import { redirect } from "next/navigation";
+"use client";
+
+import { EditorShell } from "@/components/editor/editor-shell";
 
 export default function Home() {
-  redirect("/dashboard");
+  return <EditorShell />;
 }

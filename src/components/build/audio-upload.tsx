@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useRef } from "react";
 import { Music, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
 
 interface AudioUploadProps {
-  onAudioReady: (file: File) => void;
+  file: File | null;
+  duration: number | null;
+  onFile: (file: File | null, duration: number | null) => void;
 }
 
 function formatDuration(seconds: number) {
@@ -14,9 +15,7 @@ function formatDuration(seconds: number) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-export function AudioUpload({ onAudioReady }: AudioUploadProps) {
-  const [file, setFile] = useState<File | null>(null);
-  const [duration, setDuration] = useState<number | null>(null);
+export function AudioUpload({ file, duration, onFile }: AudioUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   function handleFile(f: File) {
@@ -26,11 +25,10 @@ export function AudioUpload({ onAudioReady }: AudioUploadProps) {
     }
     const audio = new Audio(URL.createObjectURL(f));
     audio.onloadedmetadata = () => {
-      setDuration(audio.duration);
+      onFile(f, audio.duration);
       URL.revokeObjectURL(audio.src);
     };
-    setFile(f);
-    onAudioReady(f);
+    onFile(f, null);
   }
 
   if (file) {
@@ -41,7 +39,7 @@ export function AudioUpload({ onAudioReady }: AudioUploadProps) {
           <p className="text-sm font-medium truncate">{file.name}</p>
           {duration !== null && <p className="text-xs text-muted-foreground">{formatDuration(duration)}</p>}
         </div>
-        <button onClick={() => { setFile(null); setDuration(null); }} className="text-muted-foreground hover:text-foreground">
+        <button onClick={() => onFile(null, null)} className="text-muted-foreground hover:text-foreground">
           <X className="w-4 h-4" />
         </button>
       </div>
