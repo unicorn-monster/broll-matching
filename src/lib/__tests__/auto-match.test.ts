@@ -431,7 +431,7 @@ describe("matchSections — absolute positioning", () => {
 describe("matchSections — talking-head branch", () => {
   const thConfig = { fileId: TALKING_HEAD_FILE_ID, tag: "ugc-head" };
 
-  it("emits a single talking-head clip with sourceSeekMs = section.startMs * 1000", () => {
+  it("emits a single talking-head clip with sourceSeekMs = section.startTime * 1000", () => {
     const sections: ParsedSection[] = [
       {
         lineNumber: 1,

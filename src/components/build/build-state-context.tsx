@@ -149,6 +149,10 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
     if (result.droppedCount > 0) {
       console.warn(`[talking-head re-match] ${result.droppedCount} locks dropped`);
     }
+    // sections, timeline, mediaPoolClips deliberately excluded from deps:
+    // - sections/timeline: always current at effect-run time because they update via onParsed
+    //   before any TH config edit; including them would cause infinite re-fire loops.
+    // - mediaPoolClips: B-roll changes are handled by onParsed, not this effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [talkingHeadFile, talkingHeadTag]);
 

@@ -9,7 +9,7 @@ function fingerprintFile(file: File): string {
 }
 
 /** Drops every cached blob URL when the talking-head file is replaced or removed. */
-export function resetTalkingHeadThumbnails(file: File | null): void {
+function resetTalkingHeadThumbnails(file: File | null): void {
   const fp = file ? fingerprintFile(file) : null;
   if (fp === currentFingerprint) return;
   for (const url of cache.values()) URL.revokeObjectURL(url);
