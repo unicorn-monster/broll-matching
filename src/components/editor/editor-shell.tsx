@@ -8,9 +8,11 @@ import { useMediaPool } from "@/state/media-pool";
 import { DeleteFolderDialog } from "@/components/broll/delete-folder-dialog";
 import { AudioPill } from "./toolbar/audio-pill";
 import { ScriptPill } from "./toolbar/script-pill";
+import { TalkingHeadPill } from "./toolbar/talking-head-pill";
 import { ExportButton } from "./toolbar/export-button";
 import { AudioDialog } from "./dialogs/audio-dialog";
 import { ScriptDialog } from "./dialogs/script-dialog";
+import { TalkingHeadDialog } from "./dialogs/talking-head-dialog";
 import { ExportDialog } from "./dialogs/export-dialog";
 import { LibraryPanel } from "./library/library-panel";
 import { TimelinePanel } from "./timeline/timeline-panel";
@@ -27,6 +29,8 @@ export function EditorShell() {
     setAudioDialogOpen,
     scriptDialogOpen,
     setScriptDialogOpen,
+    talkingHeadDialogOpen,
+    setTalkingHeadDialogOpen,
     exportDialogOpen,
     setExportDialogOpen,
     previewClipKey,
@@ -83,6 +87,7 @@ export function EditorShell() {
         <div className="flex items-center gap-2">
           <AudioPill />
           <ScriptPill />
+          <TalkingHeadPill />
         </div>
         <div className="ml-auto">
           <ExportButton />
@@ -138,6 +143,7 @@ export function EditorShell() {
 
       <AudioDialog open={audioDialogOpen} onOpenChange={setAudioDialogOpen} />
       <ScriptDialog open={scriptDialogOpen} onOpenChange={setScriptDialogOpen} />
+      <TalkingHeadDialog open={talkingHeadDialogOpen} onOpenChange={setTalkingHeadDialogOpen} />
       <ExportDialog open={exportDialogOpen} onOpenChange={setExportDialogOpen} />
 
       {clearAllOpen ? (() => {

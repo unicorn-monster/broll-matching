@@ -32,6 +32,8 @@ interface BuildState {
   setAudioDialogOpen: (open: boolean) => void;
   scriptDialogOpen: boolean;
   setScriptDialogOpen: (open: boolean) => void;
+  talkingHeadDialogOpen: boolean;
+  setTalkingHeadDialogOpen: (open: boolean) => void;
   exportDialogOpen: boolean;
   setExportDialogOpen: (open: boolean) => void;
 
@@ -80,6 +82,7 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
   const [playheadMs, setPlayheadMs] = useState(0);
   const [audioDialogOpen, setAudioDialogOpen] = useState(false);
   const [scriptDialogOpen, setScriptDialogOpen] = useState(false);
+  const [talkingHeadDialogOpen, setTalkingHeadDialogOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [previewClipKey, setPreviewClipKey] = useState<string | null>(null);
 
@@ -210,6 +213,8 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
       setAudioDialogOpen,
       scriptDialogOpen,
       setScriptDialogOpen,
+      talkingHeadDialogOpen,
+      setTalkingHeadDialogOpen,
       exportDialogOpen,
       setExportDialogOpen,
       previewClipKey,
@@ -241,6 +246,7 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
     playheadMs,
     audioDialogOpen,
     scriptDialogOpen,
+    talkingHeadDialogOpen,
     exportDialogOpen,
     previewClipKey,
     isPlaying,
