@@ -5,6 +5,7 @@ import {
   computeChainSpeed,
   matchSections,
   validateChain,
+  TALKING_HEAD_FILE_ID,
 } from "../auto-match";
 import type { ClipMetadata } from "../auto-match";
 import type { ParsedSection } from "../script-parser";
@@ -424,5 +425,135 @@ describe("matchSections — absolute positioning", () => {
     expect(matched.startMs).toBe(7000);
     expect(matched.endMs).toBe(7000);
     expect(matched.durationMs).toBe(0);
+  });
+});
+
+describe("matchSections — talking-head branch", () => {
+  const thConfig = { fileId: TALKING_HEAD_FILE_ID, tag: "ugc-head" };
+
+  it("emits a single talking-head clip with sourceSeekMs = section.startTime * 1000", () => {
+    const sections: ParsedSection[] = [
+      {
+        lineNumber: 1,
+        startTime: 24.7,
+        endTime: 27.36,
+        tag: "ugc-head",
+        scriptText: "hi",
+        durationMs: 2660,
+      },
+    ];
+    const result = matchSections(sections, new Map(), undefined, thConfig);
+    expect(result).toHaveLength(1);
+    expect(result[0]!.clips).toEqual([
+      {
+        clipId: "talking-head",
+        fileId: TALKING_HEAD_FILE_ID,
+        speedFactor: 1,
+        trimDurationMs: 2660,
+        sourceSeekMs: 24700,
+        isPlaceholder: false,
+      },
+    ]);
+    expect(result[0]!.warnings).toEqual([]);
+  });
+
+  it("matches tag case-insensitively", () => {
+    const sections: ParsedSection[] = [
+      {
+        lineNumber: 1,
+        startTime: 0,
+        endTime: 1,
+        tag: "UGC-Head",
+        scriptText: "",
+        durationMs: 1000,
+      },
+    ];
+    const result = matchSections(sections, new Map(), undefined, thConfig);
+    expect(result[0]!.clips[0]!.sourceSeekMs).toBe(0);
+    expect(result[0]!.clips[0]!.fileId).toBe(TALKING_HEAD_FILE_ID);
+  });
+
+  it("falls back to B-roll matcher when talkingHead is undefined", () => {
+    const sections: ParsedSection[] = [
+      {
+        lineNumber: 1,
+        startTime: 0,
+        endTime: 1,
+        tag: "ugc-head",
+        scriptText: "",
+        durationMs: 1000,
+      },
+    ];
+    const result = matchSections(sections, new Map(), undefined, undefined);
+    expect(result[0]!.clips[0]!.isPlaceholder).toBe(true);
+    expect(result[0]!.clips[0]!.sourceSeekMs).toBeUndefined();
+  });
+
+  it("falls back to B-roll matcher when section tag does not match the configured talking-head tag", () => {
+    const clip = makeClip("fs-clipper-freakout-01", 5000);
+    const sections: ParsedSection[] = [
+      {
+        lineNumber: 1,
+        startTime: 0,
+        endTime: 1,
+        tag: "fs-clipper-freakout",
+        scriptText: "",
+        durationMs: 1000,
+      },
+    ];
+    const result = matchSections(
+      sections,
+      buildClipsByBaseName([clip]),
+      undefined,
+      thConfig,
+    );
+    expect(result[0]!.clips[0]!.fileId).toBe("fs-clipper-freakout-01");
+    expect(result[0]!.clips[0]!.sourceSeekMs).toBeUndefined();
+  });
+
+  it("supports a mixed timeline: TH and B-roll sections both correct", () => {
+    const clip = makeClip("fs-clipper-freakout-01", 5000);
+    const sections: ParsedSection[] = [
+      {
+        lineNumber: 1,
+        startTime: 0,
+        endTime: 1,
+        tag: "fs-clipper-freakout",
+        scriptText: "",
+        durationMs: 1000,
+      },
+      {
+        lineNumber: 2,
+        startTime: 1,
+        endTime: 2,
+        tag: "ugc-head",
+        scriptText: "",
+        durationMs: 1000,
+      },
+    ];
+    const result = matchSections(
+      sections,
+      buildClipsByBaseName([clip]),
+      undefined,
+      thConfig,
+    );
+    expect(result[0]!.clips[0]!.fileId).toBe("fs-clipper-freakout-01");
+    expect(result[1]!.clips[0]!.fileId).toBe(TALKING_HEAD_FILE_ID);
+    expect(result[1]!.clips[0]!.sourceSeekMs).toBe(1000);
+  });
+
+  it("emits zero clips for a zero-duration section even when tag matches talking-head", () => {
+    const sections: ParsedSection[] = [
+      {
+        lineNumber: 1,
+        startTime: 0,
+        endTime: 0,
+        tag: "ugc-head",
+        scriptText: "",
+        durationMs: 0,
+      },
+    ];
+    const result = matchSections(sections, new Map(), undefined, thConfig);
+    expect(result[0]!.clips).toEqual([]);
   });
 });

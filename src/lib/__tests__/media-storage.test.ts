@@ -9,14 +9,10 @@ import {
   getFile,
   removeFolder,
   renameFolder,
-  putAudio,
-  getAudio,
-  clearAudio,
   resetAll,
   type FolderRecord,
   type ClipRecord,
   type FileRecord,
-  type AudioRecord,
 } from "@/lib/media-storage";
 
 beforeEach(async () => {
@@ -114,52 +110,15 @@ describe("renameFolder", () => {
   });
 });
 
-describe("audio singleton", () => {
-  it("stores and retrieves a single audio record", async () => {
-    const audio: AudioRecord = {
-      id: "current",
-      blob: new Blob([new Uint8Array([0, 1])], { type: "audio/mp3" }),
-      type: "audio/mp3",
-      filename: "song.mp3",
-      durationMs: 30000,
-    };
-    await putAudio(audio);
-    const got = await getAudio();
-    expect(got?.filename).toBe("song.mp3");
-    expect(got?.durationMs).toBe(30000);
-  });
-
-  it("clearAudio removes the singleton", async () => {
-    const audio: AudioRecord = {
-      id: "current",
-      blob: new Blob([], { type: "audio/mp3" }),
-      type: "audio/mp3",
-      filename: "x.mp3",
-      durationMs: 0,
-    };
-    await putAudio(audio);
-    await clearAudio();
-    expect(await getAudio()).toBeNull();
-  });
-});
-
 describe("resetAll", () => {
-  it("wipes folders, clips, files, and audio", async () => {
+  it("wipes folders, clips, and files", async () => {
     const folder: FolderRecord = { id: "f1", name: "x", createdAt: new Date() };
     const c1 = makeClip("f1", "x-01", crypto.randomUUID());
     await addFolderWithClips(folder, [c1.clip], [c1.file]);
-    await putAudio({
-      id: "current",
-      blob: new Blob([], { type: "audio/mp3" }),
-      type: "audio/mp3",
-      filename: "x.mp3",
-      durationMs: 0,
-    });
 
     await resetAll();
 
     expect(await getAllFolders()).toEqual([]);
     expect(await getAllClips()).toEqual([]);
-    expect(await getAudio()).toBeNull();
   });
 });

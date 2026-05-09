@@ -1,4 +1,4 @@
-import { matchSections, createMatchState, markUsed, type MatchedSection, type ClipMetadata } from "./auto-match";
+import { matchSections, createMatchState, markUsed, type MatchedSection, type ClipMetadata, type TalkingHeadConfig } from "./auto-match";
 import type { ParsedSection } from "./script-parser";
 
 /**
@@ -27,6 +27,7 @@ export function preserveLocks(
   oldTimeline: MatchedSection[],
   newSections: ParsedSection[],
   clipsByBaseName: Map<string, ClipMetadata[]>,
+  talkingHead?: TalkingHeadConfig | null,
 ): LockPreserveResult {
   const lockQueue = oldTimeline.filter((s) => s.userLocked);
   const newTimeline: MatchedSection[] = [];
@@ -73,7 +74,7 @@ export function preserveLocks(
       preservedCount++;
     } else {
       // matchSections returns one entry per input section, so this is always defined.
-      const matched = matchSections([ns], clipsByBaseName, state)[0]!;
+      const matched = matchSections([ns], clipsByBaseName, state, talkingHead)[0]!;
       newTimeline.push({ ...matched, sectionIndex: i });
     }
   }

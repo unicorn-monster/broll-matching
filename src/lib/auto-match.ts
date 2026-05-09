@@ -1,6 +1,9 @@
 import { deriveBaseName } from "./broll";
 import type { ParsedSection } from "./script-parser";
 
+/** Synthetic fileId used for the singleton talking-head MP4 across all sliced clips. */
+export const TALKING_HEAD_FILE_ID = "__talking_head__";
+
 /** Sections with any clip whose speedFactor exceeds this get a visual warning. */
 export const HIGH_SPEED_THRESHOLD = 2.0;
 
@@ -70,6 +73,8 @@ export interface MatchedClip {
   speedFactor: number;
   trimDurationMs?: number;
   isPlaceholder: boolean;
+  /** Absolute seek-into-source position (ms). Set only on talking-head clips. */
+  sourceSeekMs?: number;
 }
 
 export interface MatchedSection {
@@ -198,10 +203,17 @@ export function markUsed(state: MatchState, tagKey: string, clipId: string): voi
   recordPick(state, q, clipId, MAX_COOLDOWN);
 }
 
+export interface TalkingHeadConfig {
+  fileId: string;
+  /** Tag stored lowercase. Caller must normalise. */
+  tag: string;
+}
+
 export function matchSections(
   sections: ParsedSection[],
   clipsByBaseName: Map<string, ClipMetadata[]>,
   state?: MatchState,
+  talkingHead?: TalkingHeadConfig | null,
 ): MatchedSection[] {
   const s = state ?? createMatchState();
   return sections.map((section, sectionIndex) => {
@@ -214,6 +226,25 @@ export function matchSections(
 
     if (section.durationMs === 0) {
       return { sectionIndex, tag: section.tag, startMs, endMs, durationMs: 0, clips: [], warnings };
+    }
+
+    if (talkingHead && section.tag.toLowerCase() === talkingHead.tag) {
+      return {
+        sectionIndex,
+        tag: section.tag,
+        startMs,
+        endMs,
+        durationMs: section.durationMs,
+        clips: [{
+          clipId: "talking-head",
+          fileId: talkingHead.fileId,
+          speedFactor: 1,
+          trimDurationMs: section.durationMs,
+          sourceSeekMs: startMs,
+          isPlaceholder: false,
+        }],
+        warnings,
+      };
     }
 
     const key = section.tag.toLowerCase();

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildSectionPlaybackPlan, buildFullTimelinePlaybackPlan, findClipAtMs, findSectionAtMs, clipIdentityKey } from "../playback-plan";
-import type { MatchedSection } from "../auto-match";
+import { TALKING_HEAD_FILE_ID, type MatchedSection } from "../auto-match";
 
 const seg = (
   _durationMs: number,
@@ -206,5 +206,36 @@ describe("clipIdentityKey", () => {
     const a = { srcUrl: "blob:1", startMs: 2000, endMs: 4000, speedFactor: 1, fileId: "k3" };
     const a2 = { srcUrl: "blob:2", startMs: 2000, endMs: 4000, speedFactor: 1.2, fileId: "k3" };
     expect(clipIdentityKey(a)).toBe(clipIdentityKey(a2));
+  });
+});
+
+describe("playback-plan — sourceSeekMs propagation", () => {
+  const timeline: MatchedSection[] = [{
+    sectionIndex: 0,
+    tag: "ugc-head",
+    startMs: 5000,
+    endMs: 6000,
+    durationMs: 1000,
+    clips: [{
+      clipId: "talking-head",
+      fileId: TALKING_HEAD_FILE_ID,
+      speedFactor: 1,
+      trimDurationMs: 1000,
+      sourceSeekMs: 5000,
+      isPlaceholder: false,
+    }],
+    warnings: [],
+  }];
+
+  it("buildSectionPlaybackPlan carries sourceSeekMs through", () => {
+    const urls = new Map([[TALKING_HEAD_FILE_ID, "blob:fake"]]);
+    const plan = buildSectionPlaybackPlan(timeline, 0, "blob:audio", urls);
+    expect(plan.clips[0]!.sourceSeekMs).toBe(5000);
+  });
+
+  it("buildFullTimelinePlaybackPlan carries sourceSeekMs through", () => {
+    const urls = new Map([[TALKING_HEAD_FILE_ID, "blob:fake"]]);
+    const plan = buildFullTimelinePlaybackPlan(timeline, "blob:audio", urls);
+    expect(plan.clips[0]!.sourceSeekMs).toBe(5000);
   });
 });

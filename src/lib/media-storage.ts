@@ -30,14 +30,6 @@ export interface FileRecord {
   filename: string;
 }
 
-export interface AudioRecord {
-  id: string;             // singleton key "current"
-  blob: Blob;
-  type: string;
-  filename: string;
-  durationMs: number;
-}
-
 export type MediaDB = IDBPDatabase<unknown>;
 
 export async function openMediaDB(): Promise<MediaDB> {
@@ -139,27 +131,6 @@ export async function renameFolder(id: string, name: string): Promise<void> {
     await tx.objectStore("folders").put({ ...existing, name });
   }
   await tx.done;
-  db.close();
-}
-
-const AUDIO_KEY = "current";
-
-export async function putAudio(audio: AudioRecord): Promise<void> {
-  const db = await openMediaDB();
-  await db.put("audio", { ...audio, id: AUDIO_KEY });
-  db.close();
-}
-
-export async function getAudio(): Promise<AudioRecord | null> {
-  const db = await openMediaDB();
-  const rec = (await db.get("audio", AUDIO_KEY)) as AudioRecord | undefined;
-  db.close();
-  return rec ?? null;
-}
-
-export async function clearAudio(): Promise<void> {
-  const db = await openMediaDB();
-  await db.delete("audio", AUDIO_KEY);
   db.close();
 }
 

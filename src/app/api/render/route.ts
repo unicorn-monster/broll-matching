@@ -116,7 +116,32 @@ export async function POST(req: Request) {
         const segPath = path.join(workDir, `seg-${i}-${j}.ts`);
         const sectionSec = section.durationMs / 1000;
 
-        if (matched.isPlaceholder) {
+        if (matched.sourceSeekMs !== undefined) {
+          // Talking-head slice: seek to sourceSeekMs inside the source MP4 before
+          // opening the input so ffmpeg discards frames before the seek point.
+          // PTS is reset to zero after the seek via setpts=PTS-STARTPTS, which
+          // prevents timestamp discontinuities in the MPEG-TS segment.
+          const inputPath = clipsByFileId.get(matched.fileId);
+          if (!inputPath) continue;
+          await runFFmpeg([
+            "-y",
+            "-ss", String(matched.sourceSeekMs / 1000),  // input seek (accurate by default in ffmpeg ≥ 2.1)
+            "-i", inputPath,
+            "-t", String((matched.trimDurationMs ?? section.durationMs) / 1000),
+            "-vf",
+              `scale=${outputWidth}:${outputHeight}:force_original_aspect_ratio=decrease,` +
+              `pad=${outputWidth}:${outputHeight}:(ow-iw)/2:(oh-ih)/2,` +
+              `setpts=PTS-STARTPTS`,
+            "-an",
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-tune", "fastdecode",
+            "-pix_fmt", "yuv420p",
+            "-r", String(FPS),
+            "-f", "mpegts",
+            segPath,
+          ]);
+        } else if (matched.isPlaceholder) {
           await runFFmpeg([
             "-y",
             "-f", "lavfi",

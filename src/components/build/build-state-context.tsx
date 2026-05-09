@@ -4,8 +4,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { MutableRefObject } from "react";
 import type { MatchedSection } from "@/lib/auto-match";
+import { buildClipsByBaseName, TALKING_HEAD_FILE_ID } from "@/lib/auto-match";
+import { preserveLocks } from "@/lib/lock-preserve";
 import type { ParsedSection } from "@/lib/script-parser";
 import type { OverlayItem } from "@/lib/overlay/overlay-types";
+import { useMediaPool } from "@/state/media-pool";
 
 interface BuildState {
   // Project inputs
@@ -29,6 +32,8 @@ interface BuildState {
   setAudioDialogOpen: (open: boolean) => void;
   scriptDialogOpen: boolean;
   setScriptDialogOpen: (open: boolean) => void;
+  talkingHeadDialogOpen: boolean;
+  setTalkingHeadDialogOpen: (open: boolean) => void;
   exportDialogOpen: boolean;
   setExportDialogOpen: (open: boolean) => void;
 
@@ -41,6 +46,11 @@ interface BuildState {
   removeOverlaysReferencingClips: (clipIds: string[]) => number;
   audioSelected: boolean;
   setAudioSelected: (v: boolean) => void;
+
+  talkingHeadFile: File | null;
+  talkingHeadTag: string;
+  setTalkingHead: (file: File | null) => void;
+  setTalkingHeadTag: (tag: string) => void;
 
   // Derived
   inspectorMode: "section" | "overlay" | "audio" | "empty";
@@ -60,6 +70,8 @@ interface BuildState {
 const BuildStateContext = createContext<BuildState | null>(null);
 
 export function BuildStateProvider({ children }: { children: React.ReactNode }) {
+  const { videos: mediaPoolClips } = useMediaPool();
+
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [audioDuration, setAudioDuration] = useState<number | null>(null);
   const [scriptText, setScriptText] = useState("");
@@ -70,12 +82,24 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
   const [playheadMs, setPlayheadMs] = useState(0);
   const [audioDialogOpen, setAudioDialogOpen] = useState(false);
   const [scriptDialogOpen, setScriptDialogOpen] = useState(false);
+  const [talkingHeadDialogOpen, setTalkingHeadDialogOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [previewClipKey, setPreviewClipKey] = useState<string | null>(null);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const playerSeekRef = useRef<((ms: number) => void) | null>(null);
   const playerTogglePlayRef = useRef<(() => void) | null>(null);
+
+  const [talkingHeadFile, setTalkingHeadFileState] = useState<File | null>(null);
+  const [talkingHeadTag, setTalkingHeadTagState] = useState<string>("ugc-head");
+
+  const setTalkingHead = useCallback((file: File | null) => {
+    setTalkingHeadFileState(file);
+  }, []);
+  const setTalkingHeadTag = useCallback((tag: string) => {
+    // Always store lowercase — match logic compares `section.tag.toLowerCase()` to this value.
+    setTalkingHeadTagState(tag.trim().toLowerCase());
+  }, []);
 
   const [overlays, setOverlaysState] = useState<OverlayItem[]>([]);
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
@@ -113,35 +137,32 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
     [],
   );
 
-  async function setAudio(file: File | null, duration: number | null) {
+  // Re-match deterministically when talking-head config changes. Uses preserveLocks so
+  // any user-locked B-roll sections survive. Talking-head sections themselves never carry
+  // locks because re-roll/swap controls are hidden for them.
+  useEffect(() => {
+    if (!sections || !timeline) return;
+    const clipsByBaseName = buildClipsByBaseName(mediaPoolClips);
+    const thConfig = talkingHeadFile && talkingHeadTag.length > 0
+      ? { fileId: TALKING_HEAD_FILE_ID, tag: talkingHeadTag }
+      : null;
+    const result = preserveLocks(timeline, sections, clipsByBaseName, thConfig);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTimeline(result.newTimeline);
+    if (result.droppedCount > 0) {
+      console.warn(`[talking-head re-match] ${result.droppedCount} locks dropped`);
+    }
+    // sections, timeline, mediaPoolClips deliberately excluded from deps:
+    // - sections/timeline: always current at effect-run time because they update via onParsed
+    //   before any TH config edit; including them would cause infinite re-fire loops.
+    // - mediaPoolClips: B-roll changes are handled by onParsed, not this effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [talkingHeadFile, talkingHeadTag]);
+
+  function setAudio(file: File | null, duration: number | null) {
     setAudioFile(file);
     setAudioDuration(duration);
-    const { putAudio, clearAudio } = await import("@/lib/media-storage");
-    if (file) {
-      await putAudio({
-        id: "current",
-        blob: file,
-        type: file.type,
-        filename: file.name,
-        durationMs: duration ?? 0,
-      });
-    } else {
-      await clearAudio();
-    }
   }
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const { getAudio } = await import("@/lib/media-storage");
-      const rec = await getAudio();
-      if (cancelled || !rec) return;
-      const file = new File([rec.blob], rec.filename, { type: rec.type });
-      setAudioFile(file);
-      setAudioDuration(rec.durationMs);
-    })();
-    return () => { cancelled = true; };
-  }, []);
 
   function onParsed(s: ParsedSection[], t: MatchedSection[]) {
     setSections(s);
@@ -173,6 +194,10 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
       audioFile,
       audioDuration,
       setAudio,
+      talkingHeadFile,
+      talkingHeadTag,
+      setTalkingHead,
+      setTalkingHeadTag,
       scriptText,
       setScriptText,
       sections,
@@ -188,6 +213,8 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
       setAudioDialogOpen,
       scriptDialogOpen,
       setScriptDialogOpen,
+      talkingHeadDialogOpen,
+      setTalkingHeadDialogOpen,
       exportDialogOpen,
       setExportDialogOpen,
       previewClipKey,
@@ -210,6 +237,8 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
   }, [
     audioFile,
     audioDuration,
+    talkingHeadFile,
+    talkingHeadTag,
     scriptText,
     sections,
     timeline,
@@ -217,6 +246,7 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
     playheadMs,
     audioDialogOpen,
     scriptDialogOpen,
+    talkingHeadDialogOpen,
     exportDialogOpen,
     previewClipKey,
     isPlaying,

@@ -6,6 +6,8 @@ export interface PlaybackPlanClip {
   endMs: number;
   speedFactor: number;
   fileId: string;
+  /** Absolute seek-into-source position (ms). Set only for talking-head clips. */
+  sourceSeekMs?: number;
 }
 
 export function clipIdentityKey(clip: PlaybackPlanClip): string {
@@ -63,7 +65,17 @@ export function buildSectionPlaybackPlan(
     // claimed even when nothing is emitted (player renders black for the gap).
     cursor = endMs;
     if (!url) continue;
-    clips.push({ srcUrl: url, startMs, endMs, speedFactor: c.speedFactor, fileId: c.fileId });
+    const clip: PlaybackPlanClip = {
+      srcUrl: url,
+      startMs,
+      endMs,
+      speedFactor: c.speedFactor,
+      fileId: c.fileId,
+    };
+    if (c.sourceSeekMs !== undefined) {
+      clip.sourceSeekMs = c.sourceSeekMs;
+    }
+    clips.push(clip);
   }
 
   return { clips, audioUrl, audioStartMs };
@@ -93,7 +105,17 @@ export function buildFullTimelinePlaybackPlan(
       const endMs = startMs + slot;
       const url = clipBlobUrls.get(c.fileId);
       if (!url) continue;
-      clips.push({ srcUrl: url, startMs, endMs, speedFactor: c.speedFactor, fileId: c.fileId });
+      const clip: PlaybackPlanClip = {
+        srcUrl: url,
+        startMs,
+        endMs,
+        speedFactor: c.speedFactor,
+        fileId: c.fileId,
+      };
+      if (c.sourceSeekMs !== undefined) {
+        clip.sourceSeekMs = c.sourceSeekMs;
+      }
+      clips.push(clip);
     }
   }
   return { clips, audioUrl, audioStartMs: 0 };

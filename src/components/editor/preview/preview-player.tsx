@@ -10,6 +10,7 @@ import {
   findSectionAtMs,
   clipIdentityKey,
 } from "@/lib/playback-plan";
+import { TALKING_HEAD_FILE_ID } from "@/lib/auto-match";
 import { findActiveOverlays, findTopmostActive, computeFadedVolume } from "@/lib/overlay/overlay-render-plan";
 
 import { formatMs } from "@/lib/format-time";
@@ -22,6 +23,7 @@ function setVideoSrcIfChanged(video: HTMLVideoElement, url: string) {
 export function PreviewPlayer() {
   const {
     audioFile,
+    talkingHeadFile,
     timeline,
     selectedSectionIndex,
     setSelectedSectionIndex,
@@ -63,6 +65,18 @@ export function PreviewPlayer() {
     return () => URL.revokeObjectURL(url);
   }, [audioFile]);
 
+  // Talking-head blob URL — tied to the File object lifetime.
+  const [talkingHeadUrl, setTalkingHeadUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!talkingHeadFile) {
+      setTalkingHeadUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(talkingHeadFile);
+    setTalkingHeadUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [talkingHeadFile]);
+
   // Populate clip URL cache from mediaPool (synchronous — no IndexedDB read).
   useEffect(() => {
     const additions = new Map<string, string>();
@@ -86,6 +100,24 @@ export function PreviewPlayer() {
       clipUrlsRef.current.set(o.fileId, url);
       additions.set(o.fileId, url);
     }
+    // Inject the synthetic talking-head URL so the playback plan can resolve it.
+    if (talkingHeadUrl) {
+      if (!clipUrlsRef.current.has(TALKING_HEAD_FILE_ID) ||
+          clipUrlsRef.current.get(TALKING_HEAD_FILE_ID) !== talkingHeadUrl) {
+        clipUrlsRef.current.set(TALKING_HEAD_FILE_ID, talkingHeadUrl);
+        additions.set(TALKING_HEAD_FILE_ID, talkingHeadUrl);
+      }
+    } else if (clipUrlsRef.current.has(TALKING_HEAD_FILE_ID)) {
+      clipUrlsRef.current.delete(TALKING_HEAD_FILE_ID);
+      // Drop from the React state Map so re-renders reflect the removal.
+      setClipUrls((prev) => {
+        if (!prev.has(TALKING_HEAD_FILE_ID)) return prev;
+        const next = new Map(prev);
+        next.delete(TALKING_HEAD_FILE_ID);
+        return next;
+      });
+    }
+
     if (additions.size > 0) {
       setClipUrls((prev) => {
         const next = new Map(prev);
@@ -93,7 +125,7 @@ export function PreviewPlayer() {
         return next;
       });
     }
-  }, [timeline, overlays, mediaPool]);
+  }, [timeline, overlays, mediaPool, talkingHeadUrl]);
 
   const plan = useMemo(() => {
     if (!timeline || !audioUrl) return null;
@@ -118,7 +150,13 @@ export function PreviewPlayer() {
       }
       setVideoSrcIfChanged(video, clip.srcUrl);
       video.playbackRate = clip.speedFactor;
-      const offsetSec = ((audioMs - clip.startMs) * clip.speedFactor) / 1000;
+      // For talking-head clips, sourceSeekMs is the absolute position within
+      // the source MP4 where this clip starts. local is the ms elapsed since
+      // the clip slot began (clamped to 0 to guard against sub-ms rAF drift).
+      const local = Math.max(0, audioMs - clip.startMs);
+      const offsetSec = clip.sourceSeekMs !== undefined
+        ? (clip.sourceSeekMs + local) / 1000
+        : (local * clip.speedFactor) / 1000;
       const seekWhenReady = () => {
         try {
           video.currentTime = Math.max(0, offsetSec);
