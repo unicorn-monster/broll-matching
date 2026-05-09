@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { preserveLocks } from "../lock-preserve";
+import { TALKING_HEAD_FILE_ID } from "../auto-match";
 import type { MatchedSection, ClipMetadata } from "../auto-match";
 import type { ParsedSection } from "../script-parser";
 
@@ -201,6 +202,30 @@ describe("preserveLocks — neighbor avoidance with locks", () => {
         expect(newTimeline[i]!.clips[0]!.clipId).not.toBe(newTimeline[i - 1]!.clips[0]!.clipId);
       }
     }
+  });
+});
+
+describe("preserveLocks — talking-head config", () => {
+  it("derives talking-head clips when the talkingHead config is passed through", () => {
+    const oldTimeline = [] as never[];
+    const newSections: ParsedSection[] = [
+      {
+        lineNumber: 1,
+        startTime: 5,
+        endTime: 6,
+        tag: "ugc-head",
+        scriptText: "",
+        durationMs: 1000,
+      },
+    ];
+    const result = preserveLocks(
+      oldTimeline,
+      newSections,
+      new Map<string, ClipMetadata[]>(),
+      { fileId: TALKING_HEAD_FILE_ID, tag: "ugc-head" },
+    );
+    expect(result.newTimeline[0]!.clips[0]!.sourceSeekMs).toBe(5000);
+    expect(result.newTimeline[0]!.clips[0]!.fileId).toBe(TALKING_HEAD_FILE_ID);
   });
 });
 
