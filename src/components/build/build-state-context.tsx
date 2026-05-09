@@ -1,11 +1,14 @@
 // src/components/build/build-state-context.tsx
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { MutableRefObject } from "react";
 import type { MatchedSection } from "@/lib/auto-match";
+import { buildClipsByBaseName, TALKING_HEAD_FILE_ID } from "@/lib/auto-match";
+import { preserveLocks } from "@/lib/lock-preserve";
 import type { ParsedSection } from "@/lib/script-parser";
 import type { OverlayItem } from "@/lib/overlay/overlay-types";
+import { useMediaPool } from "@/state/media-pool";
 
 interface BuildState {
   // Project inputs
@@ -65,6 +68,8 @@ interface BuildState {
 const BuildStateContext = createContext<BuildState | null>(null);
 
 export function BuildStateProvider({ children }: { children: React.ReactNode }) {
+  const { videos: mediaPoolClips } = useMediaPool();
+
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [audioDuration, setAudioDuration] = useState<number | null>(null);
   const [scriptText, setScriptText] = useState("");
@@ -128,6 +133,24 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
     },
     [],
   );
+
+  // Re-match deterministically when talking-head config changes. Uses preserveLocks so
+  // any user-locked B-roll sections survive. Talking-head sections themselves never carry
+  // locks because re-roll/swap controls are hidden for them.
+  useEffect(() => {
+    if (!sections || !timeline) return;
+    const clipsByBaseName = buildClipsByBaseName(mediaPoolClips);
+    const thConfig = talkingHeadFile && talkingHeadTag.length > 0
+      ? { fileId: TALKING_HEAD_FILE_ID, tag: talkingHeadTag }
+      : null;
+    const result = preserveLocks(timeline, sections, clipsByBaseName, thConfig);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTimeline(result.newTimeline);
+    if (result.droppedCount > 0) {
+      console.warn(`[talking-head re-match] ${result.droppedCount} locks dropped`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [talkingHeadFile, talkingHeadTag]);
 
   function setAudio(file: File | null, duration: number | null) {
     setAudioFile(file);
