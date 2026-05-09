@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { useMediaPool } from "@/state/media-pool";
 import { OutputSizeSelect, type OutputSize, isValidSize } from "@/components/render/output-size-select";
 import type { MatchedSection } from "@/lib/auto-match";
+import { TALKING_HEAD_FILE_ID } from "@/lib/auto-match";
+import { useBuildState } from "@/components/build/build-state-context";
 
 interface RenderTriggerProps {
   audioFile: File;
@@ -21,6 +23,7 @@ export function RenderTrigger({ audioFile, audioDurationMs, timeline }: RenderTr
   const startedAtRef = useRef<number | null>(null);
   const xhrRef = useRef<XMLHttpRequest | null>(null);
   const mediaPool = useMediaPool();
+  const { talkingHeadFile } = useBuildState();
   const [outputSize, setOutputSize] = useState<OutputSize>({ width: 1080, height: 1350 });
 
   useEffect(() => {
@@ -65,6 +68,10 @@ export function RenderTrigger({ audioFile, audioDurationMs, timeline }: RenderTr
         // Re-wrap with the fileId as the File.name so the server can map it back to
         // timeline entries — the original File.name may not be the same as the fileId.
         if (file) fd.append("clips", new File([file], fileId));
+      }
+
+      if (talkingHeadFile && usedFileIds.has(TALKING_HEAD_FILE_ID)) {
+        fd.append("clips", new File([talkingHeadFile], TALKING_HEAD_FILE_ID));
       }
 
       const blob = await postWithProgress("/api/render", fd, {
