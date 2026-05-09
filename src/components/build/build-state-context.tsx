@@ -42,6 +42,11 @@ interface BuildState {
   audioSelected: boolean;
   setAudioSelected: (v: boolean) => void;
 
+  talkingHeadFile: File | null;
+  talkingHeadTag: string;
+  setTalkingHead: (file: File | null) => void;
+  setTalkingHeadTag: (tag: string) => void;
+
   // Derived
   inspectorMode: "section" | "overlay" | "audio" | "empty";
   canExport: boolean;
@@ -76,6 +81,17 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
   const [isPlaying, setIsPlaying] = useState(false);
   const playerSeekRef = useRef<((ms: number) => void) | null>(null);
   const playerTogglePlayRef = useRef<(() => void) | null>(null);
+
+  const [talkingHeadFile, setTalkingHeadFileState] = useState<File | null>(null);
+  const [talkingHeadTag, setTalkingHeadTagState] = useState<string>("ugc-head");
+
+  const setTalkingHead = useCallback((file: File | null) => {
+    setTalkingHeadFileState(file);
+  }, []);
+  const setTalkingHeadTag = useCallback((tag: string) => {
+    // Always store lowercase — match logic compares `section.tag.toLowerCase()` to this value.
+    setTalkingHeadTagState(tag.trim().toLowerCase());
+  }, []);
 
   const [overlays, setOverlaysState] = useState<OverlayItem[]>([]);
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
@@ -148,6 +164,10 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
       audioFile,
       audioDuration,
       setAudio,
+      talkingHeadFile,
+      talkingHeadTag,
+      setTalkingHead,
+      setTalkingHeadTag,
       scriptText,
       setScriptText,
       sections,
@@ -185,6 +205,8 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
   }, [
     audioFile,
     audioDuration,
+    talkingHeadFile,
+    talkingHeadTag,
     scriptText,
     sections,
     timeline,
