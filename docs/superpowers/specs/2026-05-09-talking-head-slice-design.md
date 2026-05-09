@@ -124,54 +124,62 @@ with the new config, producing a new timeline. Locks survive when their tag stil
 the new mapping; locks on a section that swaps in/out of talking-head territory are dropped
 and reported via toast.
 
-### Render-worker
+### Server-side renderer (`src/app/api/render/route.ts`)
 
-Worker `render` message gains `talkingHeadBuffer?: ArrayBuffer`.
+Render runs server-side via native `ffmpeg`, not in a Web Worker. The dead
+`src/workers/render-worker.ts` file is not part of the active pipeline and is left untouched.
 
-Pre-loop:
+The G1 "write once, reuse" property is automatic server-side: the API already builds a
+`clipsByFileId: Map<string, diskPath>` from uploaded `clips` form parts, each written once
+to a tmp directory. The talking-head file is uploaded as one more `clips` entry whose
+`File.name` equals `TALKING_HEAD_FILE_ID`. No special pre-loop or post-loop bookkeeping
+needed — `clipsByFileId.get(TALKING_HEAD_FILE_ID)` returns the same disk path for every
+slice, and the tmp dir is wiped in the `finally` block.
 
-```
-hasTalkingHead = timeline.some(s =>
-  s.clips.some(c => c.sourceSeekMs !== undefined)
-);
-if (hasTalkingHead && talkingHeadBuffer) {
-  await ffmpeg.writeFile("talking.mp4", new Uint8Array(talkingHeadBuffer));
-}
-```
+Changes required:
 
-In-loop branch (before existing isPlaceholder/B-roll branches):
+- **Frontend `render-trigger.tsx`:** when `talkingHeadFile` is present and any timeline clip
+  references `TALKING_HEAD_FILE_ID`, append it to the form data:
 
-```
-if (matched.sourceSeekMs !== undefined) {
-  await ffmpeg.exec([
-    "-y",
-    "-ss", String(matched.sourceSeekMs / 1000),  // input seek (accurate by default in ffmpeg ≥2.1)
-    "-i", "talking.mp4",
-    "-t", String(matched.trimDurationMs! / 1000),
-    "-vf",
-      `scale=${W}:${H}:force_original_aspect_ratio=decrease,` +
-      `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,` +
-      `setpts=PTS-STARTPTS`,                     // reset PTS after seek
-    "-an",
-    "-c:v", "libx264", "-preset", "ultrafast", "-tune", "fastdecode",
-    "-pix_fmt", "yuv420p", "-r", "30",
-    "-f", "mpegts",
-    segName,
-  ]);
-  // do NOT deleteFile("talking.mp4") — reused across slices
-}
-```
+  ```ts
+  if (talkingHeadFile && usedFileIds.has(TALKING_HEAD_FILE_ID)) {
+    fd.append("clips", new File([talkingHeadFile], TALKING_HEAD_FILE_ID));
+  }
+  ```
 
-Post-loop:
+  `usedFileIds` already collects fileIds from non-placeholder clips — talking-head clips
+  pass `isPlaceholder: false` so `TALKING_HEAD_FILE_ID` is included automatically.
 
-```
-if (hasTalkingHead) {
-  try { await ffmpeg.deleteFile("talking.mp4"); } catch {}
-}
-```
+- **Server route encode block:** add a branch for `matched.sourceSeekMs !== undefined`:
+
+  ```ts
+  if (matched.sourceSeekMs !== undefined) {
+    const inputPath = clipsByFileId.get(matched.fileId);
+    if (!inputPath) continue;
+    await runFFmpeg([
+      "-y",
+      "-ss", String(matched.sourceSeekMs / 1000),  // input seek (accurate by default in ffmpeg ≥2.1)
+      "-i", inputPath,
+      "-t", String(matched.trimDurationMs! / 1000),
+      "-vf",
+        `scale=${outputWidth}:${outputHeight}:force_original_aspect_ratio=decrease,` +
+        `pad=${outputWidth}:${outputHeight}:(ow-iw)/2:(oh-ih)/2,` +
+        `setpts=PTS-STARTPTS`,                     // reset PTS after seek
+      "-an",
+      "-c:v", "libx264", "-preset", "ultrafast", "-tune", "fastdecode",
+      "-pix_fmt", "yuv420p", "-r", String(FPS),
+      "-f", "mpegts",
+      segPath,
+    ]);
+  } else if (matched.isPlaceholder) {
+    // existing black-segment branch
+  } else {
+    // existing B-roll branch
+  }
+  ```
 
 `speedFactor` is always 1 for talking-head clips; `setpts=PTS-STARTPTS` resets PTS after the
-seek so concat sees a clean MPEG-TS segment with timestamps starting at zero.
+seek so the concat step sees a clean MPEG-TS segment with timestamps starting at zero.
 
 ### Preview player
 
@@ -296,8 +304,8 @@ Reload now loses both audio and talking-head — expected per user decision.
 | `src/components/build/audio-upload.tsx` | Talking-head file picker + tag input |
 | `src/components/editor/timeline/*` (section card) | TH detection, hide re-roll/swap, badge, preview button |
 | `src/components/editor/preview/preview-player.tsx` | Synthetic fileId resolver, seek-into-source playback |
-| `src/workers/render-worker.ts` | Pre-write `talking.mp4`, slice branch with `-ss`, post-loop delete |
-| `src/components/build/render-trigger.tsx` (or equivalent) | Pass talking-head ArrayBuffer to worker |
+| `src/app/api/render/route.ts` | New `sourceSeekMs` branch with `-ss` before `-i` and `setpts=PTS-STARTPTS` |
+| `src/components/build/render-trigger.tsx` | Append talking-head File to `clips` form data when used |
 | `src/lib/__tests__/auto-match.test.ts` | Talking-head match tests |
 | `src/lib/__tests__/playback-plan.test.ts` | `sourceSeekMs` propagation tests |
 | `src/lib/__tests__/lock-preserve.test.ts` | TH config-change tests |
