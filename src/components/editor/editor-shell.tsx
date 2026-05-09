@@ -18,6 +18,8 @@ import { PreviewPlayer } from "./preview/preview-player";
 import { OverlayDragProvider } from "./overlay/overlay-drag-context";
 import { OverlayInspector } from "./overlay/overlay-inspector";
 import { AudioInspector } from "./audio/audio-inspector";
+import { Button } from "@/components/ui/button";
+import { formatMs } from "@/lib/format-time";
 
 export function EditorShell() {
   const {
@@ -35,6 +37,9 @@ export function EditorShell() {
     setAudio,
     countOverlaysUsingClips,
     removeOverlaysReferencingClips,
+    timeline,
+    selectedSectionIndex,
+    playerSeekRef,
   } = useBuildState();
   const mediaPool = useMediaPool();
   const [clearAllOpen, setClearAllOpen] = useState(false);
@@ -95,11 +100,37 @@ export function EditorShell() {
           <OverlayInspector overlayId={selectedOverlayId} />
         ) : inspectorMode === "audio" ? (
           <AudioInspector />
-        ) : (
-          <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
-            Coming soon
-          </div>
-        )}
+        ) : (() => {
+          const selectedSection = (typeof selectedSectionIndex === "number" && timeline)
+            ? timeline[selectedSectionIndex] ?? null
+            : null;
+          const isTalkingHeadSection = !!selectedSection &&
+            selectedSection.clips.some((c) => c.sourceSeekMs !== undefined);
+
+          return inspectorMode === "section" && isTalkingHeadSection && selectedSection ? (
+            <div className="h-full p-4 space-y-3">
+              <div className="rounded-md border border-purple-500/40 bg-purple-500/5 p-3 space-y-2">
+                <div className="text-xs font-semibold text-purple-300">Talking-head slice</div>
+                <div className="text-xs text-muted-foreground tabular-nums">
+                  {formatMs(selectedSection.startMs)} → {formatMs(selectedSection.endMs)}
+                  {" "}({(selectedSection.durationMs / 1000).toFixed(2)}s)
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  // eslint-disable-next-line react-hooks/refs
+                  onClick={() => playerSeekRef.current?.(selectedSection.startMs)}
+                >
+                  Preview slice
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
+              Coming soon
+            </div>
+          );
+        })()}
       </div>
       <div className="col-span-3 row-start-3 border-t border-border overflow-hidden">
         <TimelinePanel />
