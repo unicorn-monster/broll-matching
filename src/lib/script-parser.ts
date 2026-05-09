@@ -93,6 +93,18 @@ export function parseScript(
       });
     }
 
+    // Validate against the raw user-typed end time, not the frame-snapped
+    // value. Frame-snap rounds to the nearest 30fps frame, which can shift
+    // the end up by sub-frame ms (e.g. 315533 → 315533.333) and produce a
+    // false-positive when the timestamp lands exactly at audio end.
+    if (audioDurationMs !== null && rawEndMs > audioDurationMs) {
+      errors.push({
+        line: lineNumber,
+        message: `Line ${lineNumber}: end time ${formatTimestamp(rawEndMs / 1000)} exceeds audio duration ${formatTimestamp(audioDurationMs / 1000)}`,
+      });
+      return;
+    }
+
     if (!availableBaseNames.has(tag.toLowerCase())) {
       warnings.push({
         line: lineNumber,
@@ -120,18 +132,6 @@ export function parseScript(
         line: curr.lineNumber,
         message: `Line ${curr.lineNumber}: time range [${formatTimestamp(curr.startTime)}, ${formatTimestamp(curr.endTime)}] overlaps line ${prev.lineNumber} [${formatTimestamp(prev.startTime)}, ${formatTimestamp(prev.endTime)}]`,
       });
-    }
-  }
-
-  if (audioDurationMs !== null) {
-    for (const s of sections) {
-      const endMs = s.endTime * 1000;
-      if (endMs > audioDurationMs) {
-        errors.push({
-          line: s.lineNumber,
-          message: `Line ${s.lineNumber}: end time ${formatTimestamp(s.endTime)} exceeds audio duration ${formatTimestamp(audioDurationMs / 1000)}`,
-        });
-      }
     }
   }
 

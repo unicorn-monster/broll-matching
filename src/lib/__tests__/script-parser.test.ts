@@ -185,6 +185,20 @@ describe("parseScript — audio bound check", () => {
     expect(result.errors).toHaveLength(0);
   });
 
+  it("accepts endTime equal to audioDurationMs when timestamp is NOT frame-aligned", () => {
+    // 315533ms = 5:15.533 is NOT on a 30fps frame boundary; raw frame index
+    // is 9465.99 which rounds to 9466 → snapped end = 315533.333ms.
+    // Validation must compare the raw user-typed timestamp against audio
+    // duration, not the frame-snapped derivative — otherwise sub-frame
+    // snap drift causes a false positive.
+    const result = parseScript(
+      "00:00:00,000 --> 00:05:15,533 || Hook || ends exactly at audio end",
+      BASE_NAMES,
+      315_533,
+    );
+    expect(result.errors.filter((e) => /audio/i.test(e.message))).toHaveLength(0);
+  });
+
   it("skips bound check when audioDurationMs is null (audio not loaded yet)", () => {
     const result = parseScript(
       "00:00:08,000 --> 00:00:120,000 || Hook || would normally fail",
