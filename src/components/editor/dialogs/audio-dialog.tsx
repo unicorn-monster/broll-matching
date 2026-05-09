@@ -1,4 +1,3 @@
-// src/components/editor/dialogs/audio-dialog.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -11,7 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { AudioUpload } from "@/components/build/audio-upload";
+import { AudioUpload, TalkingHeadUpload } from "@/components/build/audio-upload";
 import { useBuildState } from "@/components/build/build-state-context";
 
 interface AudioDialogProps {
@@ -20,14 +19,20 @@ interface AudioDialogProps {
 }
 
 export function AudioDialog({ open, onOpenChange }: AudioDialogProps) {
-  const { audioFile, audioDuration, setAudio, sections, clearParsed } = useBuildState();
+  const {
+    audioFile, audioDuration, setAudio, sections, clearParsed,
+    talkingHeadFile, talkingHeadTag, setTalkingHead, setTalkingHeadTag,
+  } = useBuildState();
+
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [pendingDuration, setPendingDuration] = useState<number | null>(null);
   const [confirmReplace, setConfirmReplace] = useState(false);
 
-  // Reset confirm-replace state when the parent dialog closes. Otherwise, if the
-  // user closes (e.g., via Esc) while the confirm dialog was queued, it would
-  // pop immediately on next open with the stale pending file.
+  const [thFile, setThFile] = useState<File | null>(talkingHeadFile);
+  const [thDuration, setThDuration] = useState<number | null>(null);
+
+  useEffect(() => { setThFile(talkingHeadFile); }, [talkingHeadFile]);
+
   useEffect(() => {
     if (!open) {
       setConfirmReplace(false);
@@ -36,7 +41,7 @@ export function AudioDialog({ open, onOpenChange }: AudioDialogProps) {
     }
   }, [open]);
 
-  function handleFile(file: File | null, duration: number | null) {
+  function handleAudio(file: File | null, duration: number | null) {
     if (sections && audioFile && file && file !== audioFile) {
       setPendingFile(file);
       setPendingDuration(duration);
@@ -55,17 +60,35 @@ export function AudioDialog({ open, onOpenChange }: AudioDialogProps) {
     setPendingDuration(null);
   }
 
+  function handleTalkingHead(file: File | null, duration: number | null) {
+    setThFile(file);
+    setThDuration(duration);
+    setTalkingHead(file);
+  }
+
+  const tagInScript = !!sections && sections.some((s) => s.tag.toLowerCase() === talkingHeadTag);
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Audio</DialogTitle>
+            <DialogTitle>Audio &amp; Talking-Head</DialogTitle>
             <DialogDescription>
-              Upload the master MP3. Total length determines the timeline.
+              Upload the master MP3. Optionally upload a silent talking-head MP4 to auto-slice for tagged sections.
             </DialogDescription>
           </DialogHeader>
-          <AudioUpload file={audioFile} duration={audioDuration} onFile={handleFile} />
+          <div className="space-y-4">
+            <AudioUpload file={audioFile} duration={audioDuration} onFile={handleAudio} />
+            <TalkingHeadUpload
+              file={thFile}
+              duration={thDuration}
+              tag={talkingHeadTag}
+              tagInScript={tagInScript}
+              onFile={handleTalkingHead}
+              onTagChange={setTalkingHeadTag}
+            />
+          </div>
           <DialogFooter>
             <Button onClick={() => onOpenChange(false)}>Done</Button>
           </DialogFooter>
