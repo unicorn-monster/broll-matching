@@ -1,7 +1,7 @@
 // src/components/build/build-state-context.tsx
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
 import type { MutableRefObject } from "react";
 import type { MatchedSection } from "@/lib/auto-match";
 import type { ParsedSection } from "@/lib/script-parser";
@@ -113,35 +113,10 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
     [],
   );
 
-  async function setAudio(file: File | null, duration: number | null) {
+  function setAudio(file: File | null, duration: number | null) {
     setAudioFile(file);
     setAudioDuration(duration);
-    const { putAudio, clearAudio } = await import("@/lib/media-storage");
-    if (file) {
-      await putAudio({
-        id: "current",
-        blob: file,
-        type: file.type,
-        filename: file.name,
-        durationMs: duration ?? 0,
-      });
-    } else {
-      await clearAudio();
-    }
   }
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const { getAudio } = await import("@/lib/media-storage");
-      const rec = await getAudio();
-      if (cancelled || !rec) return;
-      const file = new File([rec.blob], rec.filename, { type: rec.type });
-      setAudioFile(file);
-      setAudioDuration(rec.durationMs);
-    })();
-    return () => { cancelled = true; };
-  }, []);
 
   function onParsed(s: ParsedSection[], t: MatchedSection[]) {
     setSections(s);
