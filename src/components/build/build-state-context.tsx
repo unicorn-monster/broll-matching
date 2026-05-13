@@ -91,7 +91,7 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
   const playerTogglePlayRef = useRef<(() => void) | null>(null);
 
   const [talkingHeadFile, setTalkingHeadFileState] = useState<File | null>(null);
-  const [talkingHeadTag, setTalkingHeadTagState] = useState<string>("ugc-head");
+  const [talkingHeadTag, setTalkingHeadTagState] = useState<string>("talking-head");
 
   const setTalkingHead = useCallback((file: File | null) => {
     setTalkingHeadFileState(file);

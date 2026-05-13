@@ -128,7 +128,7 @@ export function TalkingHeadUpload({
           type="text"
           value={tag}
           onChange={(e) => onTagChange(e.target.value)}
-          placeholder="ugc-head"
+          placeholder="talking-head"
           className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background"
         />
         {!tagInScript && tag.length > 0 && (
