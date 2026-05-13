@@ -10,6 +10,7 @@ import { AudioPill } from "./toolbar/audio-pill";
 import { ScriptPill } from "./toolbar/script-pill";
 import { TalkingHeadPill } from "./toolbar/talking-head-pill";
 import { ExportButton } from "./toolbar/export-button";
+import { ShuffleButton } from "./toolbar/shuffle-button";
 import { AudioDialog } from "./dialogs/audio-dialog";
 import { ScriptDialog } from "./dialogs/script-dialog";
 import { TalkingHeadDialog } from "./dialogs/talking-head-dialog";
@@ -89,7 +90,8 @@ export function EditorShell() {
           <ScriptPill />
           <TalkingHeadPill />
         </div>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <ShuffleButton />
           <ExportButton />
         </div>
       </div>
