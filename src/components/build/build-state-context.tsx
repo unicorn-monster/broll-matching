@@ -9,6 +9,8 @@ import { preserveLocks } from "@/lib/lock-preserve";
 import type { ParsedSection } from "@/lib/script-parser";
 import type { OverlayItem } from "@/lib/overlay/overlay-types";
 import { useMediaPool } from "@/state/media-pool";
+import { toast } from "sonner";
+import { shuffleTimeline as shuffleTimelineHelper, type ShuffleResult } from "@/lib/shuffle";
 
 interface BuildState {
   // Project inputs
@@ -20,6 +22,7 @@ interface BuildState {
   sections: ParsedSection[] | null;
   timeline: MatchedSection[] | null;
   setTimeline: (t: MatchedSection[]) => void;
+  shuffleTimeline: () => void;
   onParsed: (s: ParsedSection[], t: MatchedSection[]) => void;
   clearParsed: () => void;
 
@@ -164,6 +167,26 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
     setAudioDuration(duration);
   }
 
+  function buildShuffleToast(result: ShuffleResult): string {
+    const parts = [`Shuffled ${result.shuffledCount} section${result.shuffledCount === 1 ? "" : "s"}`];
+    if (result.lockedKeptCount > 0) parts.push(`${result.lockedKeptCount} locked kept`);
+    if (result.talkingHeadCount > 0) parts.push(`${result.talkingHeadCount} talking-head`);
+    if (result.placeholderCount > 0) parts.push(`${result.placeholderCount} unmatched`);
+    return parts.join(" · ");
+  }
+
+  function shuffleTimeline() {
+    if (!timeline) return;
+    const clipsByBaseName = buildClipsByBaseName(mediaPoolClips);
+    const thConfig = talkingHeadFile && talkingHeadTag.length > 0
+      ? { fileId: TALKING_HEAD_FILE_ID, tag: talkingHeadTag }
+      : null;
+    const result = shuffleTimelineHelper(timeline, clipsByBaseName, thConfig);
+    setTimeline(result.newTimeline);
+    setPreviewClipKey(null);
+    toast.success(buildShuffleToast(result));
+  }
+
   function onParsed(s: ParsedSection[], t: MatchedSection[]) {
     setSections(s);
     setTimeline(t);
@@ -203,6 +226,7 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
       sections,
       timeline,
       setTimeline,
+      shuffleTimeline,
       onParsed,
       clearParsed,
       selectedSectionIndex,
