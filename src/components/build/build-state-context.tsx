@@ -72,6 +72,14 @@ interface BuildState {
 
 const BuildStateContext = createContext<BuildState | null>(null);
 
+function buildShuffleToast(result: ShuffleResult): string {
+  const parts = [`Shuffled ${result.shuffledCount} section${result.shuffledCount === 1 ? "" : "s"}`];
+  if (result.lockedKeptCount > 0) parts.push(`${result.lockedKeptCount} locked kept`);
+  if (result.talkingHeadCount > 0) parts.push(`${result.talkingHeadCount} talking-head`);
+  if (result.placeholderCount > 0) parts.push(`${result.placeholderCount} unmatched`);
+  return parts.join(" · ");
+}
+
 export function BuildStateProvider({ children }: { children: React.ReactNode }) {
   const { videos: mediaPoolClips } = useMediaPool();
 
@@ -167,25 +175,18 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
     setAudioDuration(duration);
   }
 
-  function buildShuffleToast(result: ShuffleResult): string {
-    const parts = [`Shuffled ${result.shuffledCount} section${result.shuffledCount === 1 ? "" : "s"}`];
-    if (result.lockedKeptCount > 0) parts.push(`${result.lockedKeptCount} locked kept`);
-    if (result.talkingHeadCount > 0) parts.push(`${result.talkingHeadCount} talking-head`);
-    if (result.placeholderCount > 0) parts.push(`${result.placeholderCount} unmatched`);
-    return parts.join(" · ");
-  }
-
-  function shuffleTimeline() {
+  const shuffleTimeline = useCallback(() => {
     if (!timeline) return;
     const clipsByBaseName = buildClipsByBaseName(mediaPoolClips);
     const thConfig = talkingHeadFile && talkingHeadTag.length > 0
       ? { fileId: TALKING_HEAD_FILE_ID, tag: talkingHeadTag }
       : null;
     const result = shuffleTimelineHelper(timeline, clipsByBaseName, thConfig);
+    setIsPlaying(false);
     setTimeline(result.newTimeline);
     setPreviewClipKey(null);
     toast.success(buildShuffleToast(result));
-  }
+  }, [timeline, mediaPoolClips, talkingHeadFile, talkingHeadTag]);
 
   function onParsed(s: ParsedSection[], t: MatchedSection[]) {
     setSections(s);
@@ -263,9 +264,12 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
     audioDuration,
     talkingHeadFile,
     talkingHeadTag,
+    setTalkingHead,
+    setTalkingHeadTag,
     scriptText,
     sections,
     timeline,
+    shuffleTimeline,
     selectedSectionIndex,
     playheadMs,
     audioDialogOpen,
@@ -275,8 +279,11 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
     previewClipKey,
     isPlaying,
     overlays,
+    setOverlays,
     selectedOverlayId,
     audioSelected,
+    countOverlaysUsingClips,
+    removeOverlaysReferencingClips,
   ]);
 
   return <BuildStateContext.Provider value={value}>{children}</BuildStateContext.Provider>;

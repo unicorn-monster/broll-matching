@@ -2,6 +2,7 @@ import {
   createMatchState,
   markUsed,
   matchSections,
+  TALKING_HEAD_FILE_ID,
   type ClipMetadata,
   type MatchedSection,
   type TalkingHeadConfig,
@@ -21,11 +22,12 @@ export interface ShuffleResult {
 }
 
 /**
- * Detects a talking-head section by the presence of `sourceSeekMs` on any clip.
- * This matches the discriminator used elsewhere (editor-shell inspector).
+ * Detects a talking-head section by the synthetic TALKING_HEAD_FILE_ID.
+ * Strict identity check — robust against future B-roll features that might
+ * also set `sourceSeekMs` on non-TH clips.
  */
 function isTalkingHeadSection(section: MatchedSection): boolean {
-  return section.clips.some((c) => c.sourceSeekMs !== undefined);
+  return section.clips.some((c) => c.fileId === TALKING_HEAD_FILE_ID);
 }
 
 /**
