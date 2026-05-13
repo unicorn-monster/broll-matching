@@ -3,14 +3,14 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { MutableRefObject } from "react";
+import { toast } from "sonner";
 import type { MatchedSection } from "@/lib/auto-match";
 import { buildClipsByBaseName, TALKING_HEAD_FILE_ID } from "@/lib/auto-match";
 import { preserveLocks } from "@/lib/lock-preserve";
 import type { ParsedSection } from "@/lib/script-parser";
 import type { OverlayItem } from "@/lib/overlay/overlay-types";
-import { useMediaPool } from "@/state/media-pool";
-import { toast } from "sonner";
 import { shuffleTimeline as shuffleTimelineHelper, type ShuffleResult } from "@/lib/shuffle";
+import { useMediaPool } from "@/state/media-pool";
 
 interface BuildState {
   // Project inputs
