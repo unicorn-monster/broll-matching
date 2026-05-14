@@ -1,8 +1,8 @@
 export type { TextOverlay } from "@/lib/overlay/overlay-types";
 
 export type TextStyle = {
-  fontFamily: "Inter";
-  fontWeight: 400 | 500 | 700;
+  fontFamily: "Inter" | "Roboto" | "Open Sans";
+  fontWeight: 400 | 500 | 600 | 700;
   fontSizeFrac: number;
   textColor: string;
   bgMode: "none" | "block" | "per-line";

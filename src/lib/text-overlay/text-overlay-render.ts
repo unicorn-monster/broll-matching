@@ -67,9 +67,9 @@ export function computeOverlayPixelBox(
   return { x, y, width, height, lines, lineHeight, fontSizePx, paddingXPx, paddingYPx };
 }
 
-// Per-line pill height is a small multiple of font size so the pill hugs the text
-// while still leaving a visible gap between consecutive line pills.
-const PER_LINE_PILL_HEIGHT_MULTIPLIER = 1.15;
+// Per-line pill height matches the line-height so adjacent pills touch exactly
+// (pill[i].bottom == pill[i+1].top) — no visible gap between stacked pills.
+const PER_LINE_PILL_HEIGHT_MULTIPLIER = LINE_HEIGHT_MULTIPLIER;
 
 // Draws onto an existing canvas at (0,0) within a region sized to box.width × box.height.
 // Caller is responsible for creating the canvas at the right size and translating if needed.

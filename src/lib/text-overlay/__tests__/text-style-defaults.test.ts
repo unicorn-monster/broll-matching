@@ -17,9 +17,11 @@ describe("DEFAULT_TEXT_STYLE", () => {
     expect(DEFAULT_TEXT_STYLE.maxWidthFrac).toBeCloseTo(0.8);
   });
 
-  it("registers Inter as the only available font in v1", () => {
+  it("registers Inter, Roboto, and Open Sans as available fonts", () => {
     expect(AVAILABLE_FONTS).toEqual([
-      { id: "Inter", label: "Classic", regular: "/fonts/Inter-Regular.ttf", bold: "/fonts/Inter-Bold.ttf" },
+      { id: "Inter", label: "Classic" },
+      { id: "Roboto", label: "Roboto" },
+      { id: "Open Sans", label: "Open Sans" },
     ]);
   });
 });

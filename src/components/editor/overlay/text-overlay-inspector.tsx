@@ -90,19 +90,19 @@ export function TextOverlayInspector({ overlayId }: Props) {
       <div className="space-y-1">
         <span className="block">Weight</span>
         <div className="flex gap-1">
-          {([400, 500, 700] as const).map((w) => (
+          {([400, 500, 600, 700] as const).map((w) => (
             <button
               key={w}
               type="button"
               onClick={() => onPatchStyle({ fontWeight: w })}
               className={
-                "flex-1 px-2 py-1 text-[10px] rounded border " +
+                "flex-1 px-1.5 py-1 text-[10px] rounded border " +
                 (overlay.fontWeight === w
                   ? "border-primary bg-primary/15 text-primary"
                   : "border-border bg-muted/30 hover:bg-muted/50")
               }
             >
-              {w === 400 ? "Regular" : w === 500 ? "Medium" : "Bold"}
+              {w === 400 ? "Regular" : w === 500 ? "Medium" : w === 600 ? "SemiBold" : "Bold"}
             </button>
           ))}
         </div>

@@ -15,7 +15,7 @@ export const DEFAULT_TEXT_STYLE: TextStyle = {
   bgOpacity: 1,
   bgPaddingXFrac: 0.015,
   bgPaddingYFrac: 0.008,
-  bgRadiusFrac: 0.5,
+  bgRadiusFrac: 0.2,
   strokeEnabled: false,
   strokeColor: "#000000",
   strokeWidthFrac: 0.003,
@@ -26,10 +26,7 @@ export const DEFAULT_TEXT_STYLE: TextStyle = {
 };
 
 export const AVAILABLE_FONTS = [
-  {
-    id: "Inter" as const,
-    label: "Classic",
-    regular: "/fonts/Inter-Regular.ttf",
-    bold: "/fonts/Inter-Bold.ttf",
-  },
+  { id: "Inter" as const, label: "Classic" },
+  { id: "Roboto" as const, label: "Roboto" },
+  { id: "Open Sans" as const, label: "Open Sans" },
 ];

@@ -24,8 +24,8 @@ export interface TextOverlay extends OverlayBase {
   source: "auto-script" | "manual";
   sectionLineNumber?: number;
   // Style (all numbers are 0..1 fractions of output dimensions where applicable).
-  fontFamily: "Inter";
-  fontWeight: 400 | 500 | 700;
+  fontFamily: "Inter" | "Roboto" | "Open Sans";
+  fontWeight: 400 | 500 | 600 | 700;
   fontSizeFrac: number;
   textColor: string;
   bgMode: "none" | "block" | "per-line";
