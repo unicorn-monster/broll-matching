@@ -4,8 +4,22 @@ import type { TextStyle } from "./text-overlay-types";
 import {
   TEXT_OVERLAY_DEFAULT_DURATION_MS,
   TEXT_OVERLAY_DEFAULT_TRACK_INDEX,
+  TEXT_OVERLAY_LEAD_MS,
 } from "./text-style-defaults";
 import { wrapTextToLines } from "./text-overlay-render";
+
+// Shifts a (start, duration) interval earlier by TEXT_OVERLAY_LEAD_MS without changing its
+// duration. Clamps startMs to 0 (first caption may end up showing slightly less of its
+// "lead" if the section starts at t=0).
+function applyLead(startMs: number, durationMs: number): { startMs: number; durationMs: number } {
+  const shifted = startMs - TEXT_OVERLAY_LEAD_MS;
+  if (shifted >= 0) return { startMs: shifted, durationMs };
+  // First section: keep original startMs at 0; durationMs is shortened to keep endMs the same
+  // as it would have been (originalEnd = startMs + durationMs; new end = shifted + durationMs
+  // = originalEnd - lead; clamping start to 0 → duration = originalEnd - lead - 0).
+  const originalEnd = startMs + durationMs;
+  return { startMs: 0, durationMs: Math.max(0, originalEnd - TEXT_OVERLAY_LEAD_MS) };
+}
 
 export interface GenerateOptions {
   // Line numbers to exclude from caption generation (e.g. sections whose b-roll didn't match).
@@ -53,16 +67,17 @@ export function generateFromSections(
   const skip = options.skipLineNumbers ?? new Set<number>();
   return sections
     .filter((s) => s.scriptText.trim().length > 0 && !skip.has(s.lineNumber))
-    .map((s) =>
-      makeTextOverlay({
-        startMs: Math.round(s.startTime * 1000),
-        durationMs: s.durationMs,
+    .map((s) => {
+      const shifted = applyLead(Math.round(s.startTime * 1000), s.durationMs);
+      return makeTextOverlay({
+        startMs: shifted.startMs,
+        durationMs: shifted.durationMs,
         text: s.scriptText,
         source: "auto-script",
         sectionLineNumber: s.lineNumber,
         style,
-      }),
-    );
+      });
+    });
 }
 
 export type MergeMode = "replace" | "merge";
@@ -101,10 +116,11 @@ export function mergeCaptions(
     if (priors && priors.length > 0) {
       merged.push(...priors);
     } else {
+      const shifted = applyLead(Math.round(s.startTime * 1000), s.durationMs);
       merged.push(
         makeTextOverlay({
-          startMs: Math.round(s.startTime * 1000),
-          durationMs: s.durationMs,
+          startMs: shifted.startMs,
+          durationMs: shifted.durationMs,
           text: s.scriptText,
           source: "auto-script",
           sectionLineNumber: s.lineNumber,
@@ -116,9 +132,23 @@ export function mergeCaptions(
   return [...nonText, ...merged, ...manuals];
 }
 
-// Splits any TextOverlay whose wrapped line count exceeds `maxLines` into multiple overlays,
-// each containing at most `maxLines` lines. Duration is divided proportionally by character
-// count so segments with more text get more time on screen. Manual overlays and non-text
+// Splits text into roughly N equal-word chunks at word boundaries. Last chunk may be
+// slightly shorter (or longer by up to one word).
+function splitTextBalanced(text: string, nChunks: number): string[] {
+  const words = text.trim().split(/\s+/).filter((w) => w.length > 0);
+  if (nChunks <= 1 || words.length <= nChunks) return [text.trim()];
+  const wordsPerChunk = Math.ceil(words.length / nChunks);
+  const chunks: string[] = [];
+  for (let i = 0; i < words.length; i += wordsPerChunk) {
+    chunks.push(words.slice(i, i + wordsPerChunk).join(" "));
+  }
+  return chunks;
+}
+
+// Splits any TextOverlay whose wrapped line count exceeds `maxLines` into multiple overlays.
+// Uses BALANCED word-count split (not line-count) so chunks have similar text length and
+// avoid orphan chunks with only one word. Each resulting chunk should wrap to ≤ maxLines.
+// Duration is divided proportionally by character count. Manual overlays and non-text
 // overlays pass through unchanged.
 export function splitIntoMaxLines(
   overlays: OverlayItem[],
@@ -137,12 +167,8 @@ export function splitIntoMaxLines(
     const lines = wrapTextToLines(ctx, o.text, Math.max(10, maxTextWidthPx));
     if (lines.length <= maxLines) { out.push(o); continue; }
 
-    // Chunk lines into groups of maxLines.
-    const chunks: string[][] = [];
-    for (let i = 0; i < lines.length; i += maxLines) {
-      chunks.push(lines.slice(i, i + maxLines));
-    }
-    const chunkTexts = chunks.map((c) => c.join("\n"));
+    const nChunks = Math.ceil(lines.length / maxLines);
+    const chunkTexts = splitTextBalanced(o.text, nChunks);
     const totalChars = chunkTexts.reduce((s, t) => s + t.length, 0) || 1;
 
     let cursor = o.startMs;

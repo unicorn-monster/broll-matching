@@ -5,6 +5,11 @@ export const TEXT_OVERLAY_SNAP_AXES = [0.1, 0.5, 0.9] as const;
 export const TEXT_OVERLAY_SNAP_THRESHOLD_PX = 12;
 export const TEXT_OVERLAY_DEFAULT_TRACK_INDEX = 0;
 
+// Captions are shifted earlier by this offset so they appear slightly before the spoken
+// word — Whisper-style transcripts tend to mark word *onset* but listeners perceive a small
+// lag between caption and audio. Empirically tuned.
+export const TEXT_OVERLAY_LEAD_MS = 150;
+
 export const DEFAULT_TEXT_STYLE: TextStyle = {
   fontFamily: "Inter",
   fontWeight: 500,
