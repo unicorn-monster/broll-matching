@@ -102,7 +102,8 @@ export function drawTextOverlay(
       Math.round(style.bgRadiusFrac * pillHeight),
       Math.round(pillHeight / 2),
     );
-    for (let i = 0; i < box.lines.length; i++) {
+    const totalLines = box.lines.length;
+    for (let i = 0; i < totalLines; i++) {
       const line = box.lines[i]!;
       if (line.length === 0) continue;
       const lineWidthPx = ctx.measureText(line).width;
@@ -117,7 +118,17 @@ export function drawTextOverlay(
       }
       const textY = box.y + box.paddingYPx + i * box.lineHeight;
       const pillY = textY - pillVerticalOffset;
-      roundRect(ctx, pillX, pillY, pillWidth, pillHeight, pillRadius);
+      // Only OUTER corners of the stacked group are rounded — inner edges where
+      // pills touch each other are flat so the group reads as one merged shape.
+      const isFirst = i === 0;
+      const isLast = i === totalLines - 1;
+      const radii: CornerRadii = {
+        tl: isFirst ? pillRadius : 0,
+        tr: isFirst ? pillRadius : 0,
+        br: isLast ? pillRadius : 0,
+        bl: isLast ? pillRadius : 0,
+      };
+      roundRect(ctx, pillX, pillY, pillWidth, pillHeight, radii);
       ctx.fill();
     }
   }
@@ -188,21 +199,30 @@ export async function renderTextOverlayToPNGBytes(
   return { bytes, box: measureBox };
 }
 
+export interface CornerRadii { tl: number; tr: number; br: number; bl: number }
+
 function roundRect(
   ctx: CanvasRenderingContext2D,
-  x: number, y: number, w: number, h: number, r: number,
+  x: number, y: number, w: number, h: number, r: number | CornerRadii,
 ) {
-  const radius = Math.max(0, Math.min(r, w / 2, h / 2));
+  const maxR = Math.min(w / 2, h / 2);
+  const radii: CornerRadii = typeof r === "number"
+    ? { tl: r, tr: r, br: r, bl: r }
+    : r;
+  const tl = Math.max(0, Math.min(radii.tl, maxR));
+  const tr = Math.max(0, Math.min(radii.tr, maxR));
+  const br = Math.max(0, Math.min(radii.br, maxR));
+  const bl = Math.max(0, Math.min(radii.bl, maxR));
   ctx.beginPath();
-  ctx.moveTo(x + radius, y);
-  ctx.lineTo(x + w - radius, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
-  ctx.lineTo(x + w, y + h - radius);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
-  ctx.lineTo(x + radius, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
-  ctx.lineTo(x, y + radius);
-  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.moveTo(x + tl, y);
+  ctx.lineTo(x + w - tr, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + tr);
+  ctx.lineTo(x + w, y + h - br);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - br, y + h);
+  ctx.lineTo(x + bl, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - bl);
+  ctx.lineTo(x, y + tl);
+  ctx.quadraticCurveTo(x, y, x + tl, y);
   ctx.closePath();
 }
 
