@@ -25,7 +25,9 @@ export function TrackTextOverlays({ pxPerSecond }: Props) {
   const { overlays, setOverlays, selectedOverlayId, setSelectedOverlayId } = useBuildState();
   const [drag, setDrag] = useState<DragMode | null>(null);
   const dragRef = useRef<DragMode | null>(null);
-  dragRef.current = drag;
+  useEffect(() => {
+    dragRef.current = drag;
+  }, [drag]);
 
   const texts = overlays.filter((o): o is TextOverlay => o.kind === "text");
 
