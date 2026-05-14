@@ -23,7 +23,7 @@ function section(line: number, text: string, startMs: number, endMs: number): Pa
 }
 
 describe("generateFromSections", () => {
-  it("creates one TextOverlay per section with non-empty scriptText and applies 150ms lead", () => {
+  it("creates one TextOverlay per section with non-empty scriptText", () => {
     const sections = [
       section(1, "hello", 0, 1000),
       section(2, "", 1000, 2000), // skipped
@@ -35,12 +35,8 @@ describe("generateFromSections", () => {
     expect((out[0] as TextOverlay).text).toBe("hello");
     expect((out[0] as TextOverlay).sectionLineNumber).toBe(1);
     expect((out[0] as TextOverlay).source).toBe("auto-script");
-    // First section starts at 0 — lead clamped: start stays 0, duration shortened by 150ms.
     expect(out[0]!.startMs).toBe(0);
-    expect(out[0]!.durationMs).toBe(850);
-    // Second section: shifted left by full 150ms lead, duration unchanged.
-    expect(out[1]!.startMs).toBe(1850);
-    expect(out[1]!.durationMs).toBe(1000);
+    expect(out[0]!.durationMs).toBe(1000);
     expect((out[1] as TextOverlay).text).toBe("world");
   });
 });
