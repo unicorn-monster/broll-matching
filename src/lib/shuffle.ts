@@ -46,7 +46,7 @@ export function shuffleTimeline(
   talkingHead?: TalkingHeadConfig | null,
   rng: () => number = Math.random,
 ): ShuffleResult {
-  const state = createMatchState(rng);
+  const state = createMatchState(rng, "varied");
   const newTimeline: MatchedSection[] = [];
   let shuffledCount = 0;
   let lockedKeptCount = 0;

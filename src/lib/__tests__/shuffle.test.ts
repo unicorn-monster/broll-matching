@@ -195,4 +195,31 @@ describe("shuffleTimeline", () => {
     expect(result.shuffledCount).toBe(1);
     expect(result.placeholderCount).toBe(1);
   });
+
+  it("uses varied picker — different seeds produce meaningfully different sequences", () => {
+    // 5-clip pool, 5 auto sections of the same tag. Under the legacy "balanced" picker
+    // every clip has unique duration → after shortest-fit filter the pool collapses to 1
+    // → two seeds would produce the same A,B,C,D,E sequence. Under "varied" picker the
+    // cooldown-filtered pool stays random and seeds diverge.
+    const clips = [
+      makeClip("hook-01", 5000),
+      makeClip("hook-02", 5100),
+      makeClip("hook-03", 5200),
+      makeClip("hook-04", 5300),
+      makeClip("hook-05", 5400),
+    ];
+    const idx = buildClipsByBaseName(clips);
+    const old = [
+      autoSection(0, "hook", 0, 2000, "hook-01", "hook-01"),
+      autoSection(1, "hook", 2000, 2000, "hook-01", "hook-01"),
+      autoSection(2, "hook", 4000, 2000, "hook-01", "hook-01"),
+      autoSection(3, "hook", 6000, 2000, "hook-01", "hook-01"),
+      autoSection(4, "hook", 8000, 2000, "hook-01", "hook-01"),
+    ];
+    const a = shuffleTimeline(old, idx, null, seededRng(1));
+    const b = shuffleTimeline(old, idx, null, seededRng(99));
+    const seqA = a.newTimeline.map((s) => s.clips[0]!.clipId).join(",");
+    const seqB = b.newTimeline.map((s) => s.clips[0]!.clipId).join(",");
+    expect(seqA).not.toBe(seqB);
+  });
 });

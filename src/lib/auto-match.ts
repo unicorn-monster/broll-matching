@@ -131,15 +131,26 @@ interface QueueState {
   recent: string[];
 }
 
+/** Pick strategy controls how `pickFromState` reduces the eligible pool after cooldown.
+ *  - `balanced` (default, initial auto-match): least-used + shortest-fit + random tie-break.
+ *    Goal: even clip distribution and reserve longer clips for sections that need them.
+ *  - `varied` (shuffle re-roll): pure random from cooldown-filtered pool. Drops least-used
+ *    and shortest-fit because those biases make picks near-deterministic across re-rolls. */
+export type PickStrategy = "balanced" | "varied";
+
 export interface MatchState {
   queues: Map<string, QueueState>;
   /** Global pick count per clipId, used to bias toward least-used clips across the timeline. */
   usageCount: Map<string, number>;
   rng: () => number;
+  pickStrategy: PickStrategy;
 }
 
-export function createMatchState(rng: () => number = Math.random): MatchState {
-  return { queues: new Map(), usageCount: new Map(), rng };
+export function createMatchState(
+  rng: () => number = Math.random,
+  pickStrategy: PickStrategy = "balanced",
+): MatchState {
+  return { queues: new Map(), usageCount: new Map(), rng, pickStrategy };
 }
 
 function ensureQueue(state: MatchState, tagKey: string): QueueState {
@@ -158,12 +169,11 @@ function recordPick(state: MatchState, q: QueueState, clipId: string, cooldown: 
 }
 
 /**
- * Picks one clip from `eligible` for a section, balancing three goals:
- *  1. Cooldown — avoid clips used in the last N picks for this tag (N = min(pool-1, MAX_COOLDOWN)).
- *  2. Least-used first — among non-cooling clips, prefer those with the lowest global usage count.
- *  3. Shortest-fit — among ties, prefer the clip whose duration is closest to the section length,
- *     so longer clips stay available for sections that actually need them.
- *  Final ties broken by `state.rng`. Cooldown is bypassed if it would leave nothing eligible.
+ * Picks one clip from `eligible` for a section. Cooldown always applies. The remaining
+ * pool reduction depends on `state.pickStrategy`:
+ *  - `balanced`: least-used → shortest-fit → random tie-break (initial auto-match).
+ *  - `varied`: random straight from cooldown-filtered pool (shuffle re-roll).
+ * Cooldown is bypassed if it would leave nothing eligible.
  */
 function pickFromState(
   state: MatchState,
@@ -177,16 +187,18 @@ function pickFromState(
   let pool = eligible.filter((c) => !cooling.has(c.id));
   if (pool.length === 0) pool = eligible;
 
-  let minUsage = Infinity;
-  for (const c of pool) {
-    const u = state.usageCount.get(c.id) ?? 0;
-    if (u < minUsage) minUsage = u;
-  }
-  pool = pool.filter((c) => (state.usageCount.get(c.id) ?? 0) === minUsage);
+  if (state.pickStrategy === "balanced") {
+    let minUsage = Infinity;
+    for (const c of pool) {
+      const u = state.usageCount.get(c.id) ?? 0;
+      if (u < minUsage) minUsage = u;
+    }
+    pool = pool.filter((c) => (state.usageCount.get(c.id) ?? 0) === minUsage);
 
-  let minDur = Infinity;
-  for (const c of pool) if (c.durationMs < minDur) minDur = c.durationMs;
-  pool = pool.filter((c) => c.durationMs === minDur);
+    let minDur = Infinity;
+    for (const c of pool) if (c.durationMs < minDur) minDur = c.durationMs;
+    pool = pool.filter((c) => c.durationMs === minDur);
+  }
 
   const picked = pool[Math.floor(state.rng() * pool.length)]!;
   recordPick(state, q, picked.id, cooldown);
