@@ -5,6 +5,14 @@ import {
   TEXT_OVERLAY_DEFAULT_DURATION_MS,
   TEXT_OVERLAY_DEFAULT_TRACK_INDEX,
 } from "./text-style-defaults";
+import { wrapTextToLines } from "./text-overlay-render";
+
+export interface GenerateOptions {
+  // Line numbers to exclude from caption generation (e.g. sections whose b-roll didn't match).
+  skipLineNumbers?: Set<number>;
+}
+
+export const MAX_LINES_PER_OVERLAY = 2;
 
 function newId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
@@ -40,9 +48,11 @@ function makeTextOverlay(args: {
 export function generateFromSections(
   sections: ParsedSection[],
   style: TextStyle,
+  options: GenerateOptions = {},
 ): TextOverlay[] {
+  const skip = options.skipLineNumbers ?? new Set<number>();
   return sections
-    .filter((s) => s.scriptText.trim().length > 0)
+    .filter((s) => s.scriptText.trim().length > 0 && !skip.has(s.lineNumber))
     .map((s) =>
       makeTextOverlay({
         startMs: Math.round(s.startTime * 1000),
@@ -62,32 +72,34 @@ export function mergeCaptions(
   sections: ParsedSection[],
   style: TextStyle,
   mode: MergeMode,
+  options: GenerateOptions = {},
 ): OverlayItem[] {
+  const skip = options.skipLineNumbers ?? new Set<number>();
   const nonText = overlays.filter((o) => o.kind !== "text");
   const text = overlays.filter((o): o is TextOverlay => o.kind === "text");
   const manuals = text.filter((t) => t.source === "manual");
 
   if (mode === "replace") {
-    const fresh = generateFromSections(sections, style);
+    const fresh = generateFromSections(sections, style, options);
     return [...nonText, ...fresh, ...manuals];
   }
-  // mode === "merge"
-  const existingAutoByLine = new Map<number, TextOverlay>();
+  // mode === "merge" — keep ALL existing auto overlays for any sectionLineNumber that already has one
+  // (so splits made via splitIntoMaxLines and any user edits are preserved). New sections get a single overlay.
+  const existingByLine = new Map<number, TextOverlay[]>();
   for (const t of text) {
     if (t.source === "auto-script" && t.sectionLineNumber !== undefined) {
-      existingAutoByLine.set(t.sectionLineNumber, t);
+      const arr = existingByLine.get(t.sectionLineNumber) ?? [];
+      arr.push(t);
+      existingByLine.set(t.sectionLineNumber, arr);
     }
   }
   const merged: TextOverlay[] = [];
   for (const s of sections) {
     if (s.scriptText.trim().length === 0) continue;
-    const prior = existingAutoByLine.get(s.lineNumber);
-    if (prior) {
-      merged.push({
-        ...prior,
-        startMs: Math.round(s.startTime * 1000),
-        durationMs: s.durationMs,
-      });
+    if (skip.has(s.lineNumber)) continue;
+    const priors = existingByLine.get(s.lineNumber);
+    if (priors && priors.length > 0) {
+      merged.push(...priors);
     } else {
       merged.push(
         makeTextOverlay({
@@ -102,6 +114,55 @@ export function mergeCaptions(
     }
   }
   return [...nonText, ...merged, ...manuals];
+}
+
+// Splits any TextOverlay whose wrapped line count exceeds `maxLines` into multiple overlays,
+// each containing at most `maxLines` lines. Duration is divided proportionally by character
+// count so segments with more text get more time on screen. Manual overlays and non-text
+// overlays pass through unchanged.
+export function splitIntoMaxLines(
+  overlays: OverlayItem[],
+  ctx: CanvasRenderingContext2D,
+  refOutputWidthPx: number,
+  refOutputHeightPx: number,
+  maxLines: number = MAX_LINES_PER_OVERLAY,
+): OverlayItem[] {
+  const out: OverlayItem[] = [];
+  for (const o of overlays) {
+    if (o.kind !== "text") { out.push(o); continue; }
+    const fontSizePx = Math.round(o.fontSizeFrac * refOutputHeightPx);
+    const paddingXPx = Math.round(o.bgPaddingXFrac * refOutputWidthPx);
+    const maxTextWidthPx = Math.round(o.maxWidthFrac * refOutputWidthPx) - 2 * paddingXPx;
+    ctx.font = `${o.fontWeight} ${fontSizePx}px ${o.fontFamily}, sans-serif`;
+    const lines = wrapTextToLines(ctx, o.text, Math.max(10, maxTextWidthPx));
+    if (lines.length <= maxLines) { out.push(o); continue; }
+
+    // Chunk lines into groups of maxLines.
+    const chunks: string[][] = [];
+    for (let i = 0; i < lines.length; i += maxLines) {
+      chunks.push(lines.slice(i, i + maxLines));
+    }
+    const chunkTexts = chunks.map((c) => c.join("\n"));
+    const totalChars = chunkTexts.reduce((s, t) => s + t.length, 0) || 1;
+
+    let cursor = o.startMs;
+    const endMs = o.startMs + o.durationMs;
+    for (let i = 0; i < chunkTexts.length; i++) {
+      const chunkText = chunkTexts[i]!;
+      const isLast = i === chunkTexts.length - 1;
+      const proposed = Math.round(o.durationMs * (chunkText.length / totalChars));
+      const dur = isLast ? endMs - cursor : proposed;
+      out.push({
+        ...o,
+        id: newId(),
+        startMs: cursor,
+        durationMs: dur,
+        text: chunkText,
+      });
+      cursor += dur;
+    }
+  }
+  return out;
 }
 
 export function addManualTextOverlay(
