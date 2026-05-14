@@ -67,6 +67,10 @@ export function computeOverlayPixelBox(
   return { x, y, width, height, lines, lineHeight, fontSizePx, paddingXPx, paddingYPx };
 }
 
+// Per-line pill height is a small multiple of font size so the pill hugs the text
+// while still leaving a visible gap between consecutive line pills.
+const PER_LINE_PILL_HEIGHT_MULTIPLIER = 1.15;
+
 // Draws onto an existing canvas at (0,0) within a region sized to box.width × box.height.
 // Caller is responsible for creating the canvas at the right size and translating if needed.
 export function drawTextOverlay(
@@ -79,7 +83,10 @@ export function drawTextOverlay(
   const box = computeOverlayPixelBox(ctx, text, style, outputWidthPx, outputHeightPx);
   ctx.save();
   ctx.translate(-box.x, -box.y);
-  if (style.bgEnabled) {
+  ctx.font = `${style.fontWeight} ${box.fontSizePx}px ${style.fontFamily}, sans-serif`;
+  ctx.textBaseline = "top";
+
+  if (style.bgMode === "block") {
     const radius = Math.min(
       Math.round(style.bgRadiusFrac * box.height),
       Math.round(box.height / 2),
@@ -87,9 +94,34 @@ export function drawTextOverlay(
     ctx.fillStyle = hexWithOpacity(style.bgColor, style.bgOpacity);
     roundRect(ctx, box.x, box.y, box.width, box.height, radius);
     ctx.fill();
+  } else if (style.bgMode === "per-line") {
+    const pillHeight = Math.round(box.fontSizePx * PER_LINE_PILL_HEIGHT_MULTIPLIER);
+    const pillVerticalOffset = Math.round((pillHeight - box.fontSizePx) / 2);
+    ctx.fillStyle = hexWithOpacity(style.bgColor, style.bgOpacity);
+    const pillRadius = Math.min(
+      Math.round(style.bgRadiusFrac * pillHeight),
+      Math.round(pillHeight / 2),
+    );
+    for (let i = 0; i < box.lines.length; i++) {
+      const line = box.lines[i]!;
+      if (line.length === 0) continue;
+      const lineWidthPx = ctx.measureText(line).width;
+      const pillWidth = Math.round(lineWidthPx + 2 * box.paddingXPx);
+      let pillX: number;
+      if (style.alignment === "left") {
+        pillX = box.x;
+      } else if (style.alignment === "right") {
+        pillX = box.x + box.width - pillWidth;
+      } else {
+        pillX = box.x + Math.round((box.width - pillWidth) / 2);
+      }
+      const textY = box.y + box.paddingYPx + i * box.lineHeight;
+      const pillY = textY - pillVerticalOffset;
+      roundRect(ctx, pillX, pillY, pillWidth, pillHeight, pillRadius);
+      ctx.fill();
+    }
   }
-  ctx.font = `${style.fontWeight} ${box.fontSizePx}px ${style.fontFamily}, sans-serif`;
-  ctx.textBaseline = "top";
+
   if (style.strokeEnabled) {
     ctx.strokeStyle = style.strokeColor;
     ctx.lineWidth = Math.max(1, Math.round(style.strokeWidthFrac * outputHeightPx));

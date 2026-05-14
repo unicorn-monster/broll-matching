@@ -38,7 +38,7 @@ const text = (id: string): OverlayItem => ({
   fontWeight: 700,
   fontSizeFrac: 0.05,
   textColor: "#000",
-  bgEnabled: true,
+  bgMode: "per-line",
   bgColor: "#fff",
   bgOpacity: 1,
   bgPaddingXFrac: 0.015,

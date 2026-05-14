@@ -10,7 +10,7 @@ import type { TextStyle } from "@/lib/text-overlay/text-overlay-types";
 
 const TEXT_STYLE_KEYS: (keyof TextStyle)[] = [
   "fontFamily", "fontWeight", "fontSizeFrac", "textColor",
-  "bgEnabled", "bgColor", "bgOpacity", "bgPaddingXFrac", "bgPaddingYFrac", "bgRadiusFrac",
+  "bgMode", "bgColor", "bgOpacity", "bgPaddingXFrac", "bgPaddingYFrac", "bgRadiusFrac",
   "strokeEnabled", "strokeColor", "strokeWidthFrac",
   "alignment", "positionXFrac", "positionYFrac", "maxWidthFrac",
 ];

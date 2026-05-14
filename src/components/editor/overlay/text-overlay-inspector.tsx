@@ -13,7 +13,7 @@ interface Props { overlayId: string }
 
 const STYLE_KEYS: (keyof TextStyle)[] = [
   "fontFamily", "fontWeight", "fontSizeFrac", "textColor",
-  "bgEnabled", "bgColor", "bgOpacity", "bgPaddingXFrac", "bgPaddingYFrac", "bgRadiusFrac",
+  "bgMode", "bgColor", "bgOpacity", "bgPaddingXFrac", "bgPaddingYFrac", "bgRadiusFrac",
   "strokeEnabled", "strokeColor", "strokeWidthFrac",
   "alignment", "positionXFrac", "positionYFrac", "maxWidthFrac",
 ];
@@ -88,6 +88,27 @@ export function TextOverlayInspector({ overlayId }: Props) {
       </div>
 
       <div className="space-y-1">
+        <span className="block">Weight</span>
+        <div className="flex gap-1">
+          {([400, 500, 700] as const).map((w) => (
+            <button
+              key={w}
+              type="button"
+              onClick={() => onPatchStyle({ fontWeight: w })}
+              className={
+                "flex-1 px-2 py-1 text-[10px] rounded border " +
+                (overlay.fontWeight === w
+                  ? "border-primary bg-primary/15 text-primary"
+                  : "border-border bg-muted/30 hover:bg-muted/50")
+              }
+            >
+              {w === 400 ? "Regular" : w === 500 ? "Medium" : "Bold"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-1">
         <div className="flex justify-between">
           <span>Font size</span>
           <span className="font-mono">{Math.round(overlay.fontSizeFrac * 100)}%</span>
@@ -110,17 +131,27 @@ export function TextOverlayInspector({ overlayId }: Props) {
         />
       </div>
 
-      <div className="space-y-1 pt-2 border-t border-border">
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={overlay.bgEnabled}
-            onChange={(e) => onPatchStyle({ bgEnabled: e.target.checked })}
-          />
-          <span className="font-medium">Background</span>
-        </label>
-        {overlay.bgEnabled && (
-          <div className="space-y-1.5 pl-5">
+      <div className="space-y-1.5 pt-2 border-t border-border">
+        <span className="font-medium block">Background</span>
+        <div className="flex gap-1">
+          {(["none", "block", "per-line"] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => onPatchStyle({ bgMode: mode })}
+              className={
+                "flex-1 px-2 py-1 text-[10px] rounded border " +
+                (overlay.bgMode === mode
+                  ? "border-primary bg-primary/15 text-primary"
+                  : "border-border bg-muted/30 hover:bg-muted/50")
+              }
+            >
+              {mode === "none" ? "Off" : mode === "block" ? "Block" : "Per-line"}
+            </button>
+          ))}
+        </div>
+        {overlay.bgMode !== "none" && (
+          <div className="space-y-1.5 pl-1 pt-1">
             <div className="flex items-center gap-2">
               <span>Color</span>
               <input
@@ -135,6 +166,13 @@ export function TextOverlayInspector({ overlayId }: Props) {
               <input type="range" min={0} max={100} step={5}
                 value={Math.round(overlay.bgOpacity * 100)}
                 onChange={(e) => onPatchStyle({ bgOpacity: Number(e.target.value) / 100 })}
+                className="w-full" />
+            </div>
+            <div>
+              <div className="flex justify-between"><span>Rounded</span><span className="font-mono">{Math.round(overlay.bgRadiusFrac * 100)}%</span></div>
+              <input type="range" min={0} max={50} step={1}
+                value={Math.round(overlay.bgRadiusFrac * 100)}
+                onChange={(e) => onPatchStyle({ bgRadiusFrac: Number(e.target.value) / 100 })}
                 className="w-full" />
             </div>
           </div>

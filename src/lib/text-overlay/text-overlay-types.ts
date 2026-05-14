@@ -2,10 +2,10 @@ export type { TextOverlay } from "@/lib/overlay/overlay-types";
 
 export type TextStyle = {
   fontFamily: "Inter";
-  fontWeight: 400 | 700;
+  fontWeight: 400 | 500 | 700;
   fontSizeFrac: number;
   textColor: string;
-  bgEnabled: boolean;
+  bgMode: "none" | "block" | "per-line";
   bgColor: string;
   bgOpacity: number;
   bgPaddingXFrac: number;

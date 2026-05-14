@@ -25,10 +25,10 @@ export interface TextOverlay extends OverlayBase {
   sectionLineNumber?: number;
   // Style (all numbers are 0..1 fractions of output dimensions where applicable).
   fontFamily: "Inter";
-  fontWeight: 400 | 700;
+  fontWeight: 400 | 500 | 700;
   fontSizeFrac: number;
   textColor: string;
-  bgEnabled: boolean;
+  bgMode: "none" | "block" | "per-line";
   bgColor: string;
   bgOpacity: number;
   bgPaddingXFrac: number;

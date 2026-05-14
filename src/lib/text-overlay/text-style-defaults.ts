@@ -7,10 +7,10 @@ export const TEXT_OVERLAY_DEFAULT_TRACK_INDEX = 0;
 
 export const DEFAULT_TEXT_STYLE: TextStyle = {
   fontFamily: "Inter",
-  fontWeight: 700,
+  fontWeight: 500,
   fontSizeFrac: 0.05,
   textColor: "#000000",
-  bgEnabled: true,
+  bgMode: "per-line",
   bgColor: "#ffffff",
   bgOpacity: 1,
   bgPaddingXFrac: 0.015,
