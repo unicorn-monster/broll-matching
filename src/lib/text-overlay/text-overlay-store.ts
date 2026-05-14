@@ -180,7 +180,9 @@ export function splitIntoMaxLines(
       const dur = isLast ? endMs - cursor : proposed;
       out.push({
         ...o,
-        id: newId(),
+        // Chunk 0 keeps the original overlay's id so selection / external references survive
+        // a re-split. Subsequent chunks get fresh ids.
+        id: i === 0 ? o.id : newId(),
         startMs: cursor,
         durationMs: dur,
         text: chunkText,

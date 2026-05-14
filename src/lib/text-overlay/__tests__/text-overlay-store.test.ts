@@ -200,8 +200,9 @@ describe("splitIntoMaxLines", () => {
     const sorted = (result as TextOverlay[]).sort((a, b) => a.startMs - b.startMs);
     expect(sorted[0]!.startMs).toBe(0);
     expect(sorted[sorted.length - 1]!.startMs + sorted[sorted.length - 1]!.durationMs).toBe(3000);
-    // Each chunk has fresh id distinct from the original.
-    for (const r of result) expect(r.id).not.toBe("x");
+    // Chunk 0 keeps the original id so selection survives re-split; later chunks get fresh ids.
+    expect(sorted[0]!.id).toBe("x");
+    for (let i = 1; i < sorted.length; i++) expect(sorted[i]!.id).not.toBe("x");
   });
 
   it("passes through non-text overlays unchanged", () => {

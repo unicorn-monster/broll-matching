@@ -5,6 +5,7 @@ import { useBuildState } from "@/components/build/build-state-context";
 import type { TextOverlay } from "@/lib/overlay/overlay-types";
 import { drawTextOverlay, computeOverlayPixelBox } from "@/lib/text-overlay/text-overlay-render";
 import { mutateOverlay } from "@/lib/overlay/overlay-store";
+import { applyStyleToAll } from "@/lib/text-overlay/text-overlay-store";
 import { TEXT_OVERLAY_SNAP_AXES, TEXT_OVERLAY_SNAP_THRESHOLD_PX } from "@/lib/text-overlay/text-style-defaults";
 
 interface Props {
@@ -13,7 +14,14 @@ interface Props {
 }
 
 export function TextOverlayLayer({ frameWidthPx, frameHeightPx }: Props) {
-  const { overlays, playheadMs, selectedOverlayId, setSelectedOverlayId, setOverlays } = useBuildState();
+  const {
+    overlays,
+    playheadMs,
+    selectedOverlayId,
+    setSelectedOverlayId,
+    setOverlays,
+    textOverlayApplyAll,
+  } = useBuildState();
   const visibleTexts = overlays.filter(
     (o): o is TextOverlay =>
       o.kind === "text" && playheadMs >= o.startMs && playheadMs < o.startMs + o.durationMs,
@@ -29,9 +37,13 @@ export function TextOverlayLayer({ frameWidthPx, frameHeightPx }: Props) {
           frameHeightPx={frameHeightPx}
           selected={selectedOverlayId === t.id}
           onSelect={() => setSelectedOverlayId(t.id)}
-          onCommitPosition={(positionXFrac, positionYFrac) =>
-            setOverlays((prev) => mutateOverlay(prev, t.id, { positionXFrac, positionYFrac }))
-          }
+          onCommitPosition={(positionXFrac, positionYFrac) => {
+            if (textOverlayApplyAll) {
+              setOverlays((prev) => applyStyleToAll(prev, { positionXFrac, positionYFrac }));
+            } else {
+              setOverlays((prev) => mutateOverlay(prev, t.id, { positionXFrac, positionYFrac }));
+            }
+          }}
         />
       ))}
     </>
