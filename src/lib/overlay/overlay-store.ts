@@ -9,9 +9,10 @@ export function addOverlayWithNewTrack(
   overlays: OverlayItem[],
   next: OverlayItem,
 ): OverlayItem[] {
-  const shifted = overlays.map((o) =>
-    o.trackIndex >= next.trackIndex ? { ...o, trackIndex: o.trackIndex + 1 } : o,
-  );
+  const shifted = overlays.map((o) => {
+    if (o.kind !== "broll-video") return o;
+    return o.trackIndex >= next.trackIndex ? { ...o, trackIndex: o.trackIndex + 1 } : o;
+  });
   return [...shifted, next];
 }
 
@@ -36,6 +37,7 @@ export function splitOverlayAtMs(
 ): OverlayItem[] {
   const o = overlays.find((x) => x.id === id);
   if (!o) return overlays;
+  if (o.kind !== "broll-video") return overlays;
   const localMs = atMs - o.startMs;
   if (localMs <= 0 || localMs >= o.durationMs) return overlays;
 
@@ -59,10 +61,13 @@ export function mutateOverlay(
 }
 
 export function compactTracks(overlays: OverlayItem[]): OverlayItem[] {
-  const usedIndices = Array.from(new Set(overlays.map((o) => o.trackIndex))).sort(
-    (a, b) => a - b,
-  );
+  const brollIndices = Array.from(
+    new Set(overlays.filter((o) => o.kind === "broll-video").map((o) => o.trackIndex)),
+  ).sort((a, b) => a - b);
   const remap = new Map<number, number>();
-  usedIndices.forEach((idx, newIdx) => remap.set(idx, newIdx));
-  return overlays.map((o) => ({ ...o, trackIndex: remap.get(o.trackIndex) ?? o.trackIndex }));
+  brollIndices.forEach((idx, newIdx) => remap.set(idx, newIdx));
+  return overlays.map((o) => {
+    if (o.kind !== "broll-video") return o;
+    return { ...o, trackIndex: remap.get(o.trackIndex) ?? o.trackIndex };
+  });
 }

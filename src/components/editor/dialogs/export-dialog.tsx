@@ -1,6 +1,7 @@
 // src/components/editor/dialogs/export-dialog.tsx
 "use client";
 
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -17,7 +18,11 @@ interface ExportDialogProps {
 }
 
 export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
-  const { audioFile, audioDuration, timeline } = useBuildState();
+  const { audioFile, audioDuration, timeline, overlays } = useBuildState();
+  const hasCaptions = overlays.some((o) => o.kind === "text");
+  // Default ON when captions exist — the common case is "I built captions, I want them burned in".
+  // Toggle gives an escape hatch for A/B testing uncaptioned variants.
+  const [includeCaptions, setIncludeCaptions] = useState(true);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
@@ -28,11 +33,24 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
           </DialogDescription>
         </DialogHeader>
         {audioFile && timeline ? (
-          <RenderTrigger
-            audioFile={audioFile}
-            audioDurationMs={audioDuration ? audioDuration * 1000 : 0}
-            timeline={timeline}
-          />
+          <div className="space-y-3">
+            {hasCaptions && (
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={includeCaptions}
+                  onChange={(e) => setIncludeCaptions(e.target.checked)}
+                />
+                Include captions
+              </label>
+            )}
+            <RenderTrigger
+              audioFile={audioFile}
+              audioDurationMs={audioDuration ? audioDuration * 1000 : 0}
+              timeline={timeline}
+              includeCaptions={includeCaptions && hasCaptions}
+            />
+          </div>
         ) : (
           <p className="text-sm text-muted-foreground">Audio + script required to export.</p>
         )}

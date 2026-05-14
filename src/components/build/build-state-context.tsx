@@ -50,6 +50,8 @@ interface BuildState {
   removeOverlaysReferencingClips: (clipIds: string[]) => number;
   audioSelected: boolean;
   setAudioSelected: (v: boolean) => void;
+  textOverlayApplyAll: boolean;
+  setTextOverlayApplyAll: (v: boolean) => void;
 
   talkingHeadFile: File | null;
   talkingHeadTag: string;
@@ -116,6 +118,21 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
   const [overlays, setOverlaysState] = useState<OverlayItem[]>([]);
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
   const [audioSelected, setAudioSelected] = useState(false);
+  const [textOverlayApplyAll, setTextOverlayApplyAllState] = useState<boolean>(true);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem("text-overlay-apply-all");
+    if (stored === "false") setTextOverlayApplyAllState(false);
+  }, []);
+
+  const setTextOverlayApplyAll = useCallback((v: boolean) => {
+    setTextOverlayApplyAllState(v);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("text-overlay-apply-all", v ? "true" : "false");
+    }
+  }, []);
+
   const setOverlays = useCallback(
     (next: OverlayItem[] | ((prev: OverlayItem[]) => OverlayItem[])) => {
       setOverlaysState((prev) =>
@@ -128,7 +145,7 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
   const countOverlaysUsingClips = useCallback(
     (clipIds: string[]) => {
       const set = new Set(clipIds);
-      return overlays.filter((o) => set.has(o.clipId)).length;
+      return overlays.filter((o) => o.kind === "broll-video" && set.has(o.clipId)).length;
     },
     [overlays],
   );
@@ -139,7 +156,7 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
       let removed = 0;
       setOverlaysState((prev) => {
         const next = prev.filter((o) => {
-          if (set.has(o.clipId)) { removed++; return false; }
+          if (o.kind === "broll-video" && set.has(o.clipId)) { removed++; return false; }
           return true;
         });
         return next;
@@ -265,6 +282,8 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
       removeOverlaysReferencingClips,
       audioSelected,
       setAudioSelected,
+      textOverlayApplyAll,
+      setTextOverlayApplyAll,
       inspectorMode,
       canExport,
       playerSeekRef,
@@ -296,6 +315,8 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
     setOverlays,
     selectedOverlayId,
     audioSelected,
+    textOverlayApplyAll,
+    setTextOverlayApplyAll,
     countOverlaysUsingClips,
     removeOverlaysReferencingClips,
   ]);

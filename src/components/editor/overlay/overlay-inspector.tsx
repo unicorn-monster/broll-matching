@@ -24,6 +24,7 @@ export function OverlayInspector({ overlayId }: OverlayInspectorProps) {
   }, [overlay, setSelectedOverlayId]);
 
   if (!overlay) return null;
+  if (overlay.kind !== "broll-video") return null;
 
   function onPatch(patch: Partial<NonNullable<typeof overlay>>) {
     if (!overlay) return;
@@ -49,7 +50,7 @@ export function OverlayInspector({ overlayId }: OverlayInspectorProps) {
         </div>
         <div className="min-w-0">
           <div className="font-medium truncate">
-            {overlay.kind === "broll-video" ? overlay.clipId.slice(0, 12) : overlay.kind}
+            {overlay.clipId.slice(0, 12)}
           </div>
           <div className="text-muted-foreground text-[10px]">
             Source: {formatMs(overlay.sourceDurationMs)}

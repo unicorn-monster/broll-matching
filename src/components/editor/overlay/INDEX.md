@@ -36,5 +36,6 @@ EditorShell
 | `overlay-drag-source.ts`    | Hook: wires ClipTile drag events → startDrag in context             |
 | `overlay-tracks.tsx`        | Main drop target: renders tracks, ghost, handles drop/move/click    |
 | `overlay-clip-block.tsx`    | Visual block per overlay on a track row                             |
-| `overlay-inspector.tsx`     | Inspector panel: volume, mute, fade, delete for selected overlay    |
+| `overlay-inspector.tsx`     | Inspector panel: volume, mute, fade, delete for selected b-roll overlay |
+| `text-overlay-inspector.tsx` | Inspector panel for `kind: "text"` — apply-all, text content, font, size, color, BG, stroke, position |
 | `use-overlay-keyboard.ts`   | Keyboard: `C`=split, `Delete`/`Backspace`=delete, `Esc`=deselect   |

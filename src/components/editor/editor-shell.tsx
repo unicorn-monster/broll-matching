@@ -11,6 +11,8 @@ import { ScriptPill } from "./toolbar/script-pill";
 import { TalkingHeadPill } from "./toolbar/talking-head-pill";
 import { ExportButton } from "./toolbar/export-button";
 import { ShuffleButton } from "./toolbar/shuffle-button";
+import { GenerateCaptionsButton } from "./toolbar/generate-captions-button";
+import { AddTextButton } from "./toolbar/add-text-button";
 import { AudioDialog } from "./dialogs/audio-dialog";
 import { ScriptDialog } from "./dialogs/script-dialog";
 import { TalkingHeadDialog } from "./dialogs/talking-head-dialog";
@@ -20,9 +22,11 @@ import { TimelinePanel } from "./timeline/timeline-panel";
 import { PreviewPlayer } from "./preview/preview-player";
 import { OverlayDragProvider } from "./overlay/overlay-drag-context";
 import { OverlayInspector } from "./overlay/overlay-inspector";
+import { TextOverlayInspector } from "./overlay/text-overlay-inspector";
 import { AudioInspector } from "./audio/audio-inspector";
 import { Button } from "@/components/ui/button";
 import { formatMs } from "@/lib/format-time";
+import { preloadTextOverlayFonts } from "@/lib/text-overlay/font-loader";
 
 export function EditorShell() {
   const {
@@ -38,6 +42,7 @@ export function EditorShell() {
     setPreviewClipKey,
     inspectorMode,
     selectedOverlayId,
+    overlays,
     audioFile,
     setAudio,
     countOverlaysUsingClips,
@@ -48,6 +53,12 @@ export function EditorShell() {
   } = useBuildState();
   const mediaPool = useMediaPool();
   const [clearAllOpen, setClearAllOpen] = useState(false);
+
+  // Fire-and-forget: warm up every (family, weight) used by text overlays so canvas-rendered
+  // captions don't fall back to sans-serif on first draw.
+  useEffect(() => {
+    void preloadTextOverlayFonts();
+  }, []);
 
   useEffect(() => {
     if (previewClipKey === null) return;
@@ -91,6 +102,8 @@ export function EditorShell() {
           <TalkingHeadPill />
         </div>
         <div className="ml-auto flex items-center gap-2">
+          <GenerateCaptionsButton />
+          <AddTextButton />
           <ShuffleButton />
           <ExportButton />
         </div>
@@ -104,7 +117,9 @@ export function EditorShell() {
       </div>
       <div className="row-start-2 col-start-3 border-l border-border overflow-hidden bg-muted/10">
         {inspectorMode === "overlay" && selectedOverlayId ? (
-          <OverlayInspector overlayId={selectedOverlayId} />
+          overlays.find((o) => o.id === selectedOverlayId)?.kind === "text"
+            ? <TextOverlayInspector overlayId={selectedOverlayId} />
+            : <OverlayInspector overlayId={selectedOverlayId} />
         ) : inspectorMode === "audio" ? (
           <AudioInspector />
         ) : (() => {

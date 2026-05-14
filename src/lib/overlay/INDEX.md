@@ -15,6 +15,8 @@ This folder holds **pure logic** for the overlay tracks feature. UI components l
 | Topmost overlay selection                             | `overlay-render-plan.ts` (`findTopmostActive`)          |
 | Drop creates new track when it shouldn't              | `overlay-tracks.ts` (`pickTrack`)                       |
 | Add a new field to `OverlayItem`                      | `overlay-types.ts`, then grep usages                    |
+| Track compaction not ignoring text overlays           | `overlay-store.ts` (`compactTracks` filters to `kind: "broll-video"`) |
+| Text overlays appearing in b-roll z-stack             | `overlay-render-plan.ts` (filters to `BrollVideoOverlay`) |
 
 ## Data flow
 

@@ -1,10 +1,17 @@
-import type { OverlayItem } from "./overlay-types";
+import type { BrollVideoOverlay, OverlayItem } from "./overlay-types";
 
-export function findActiveOverlays(overlays: OverlayItem[], ms: number): OverlayItem[] {
-  return overlays.filter((o) => ms >= o.startMs && ms < o.startMs + o.durationMs);
+export function findActiveOverlays(
+  overlays: OverlayItem[],
+  ms: number,
+): BrollVideoOverlay[] {
+  const brolls = overlays.filter((o): o is BrollVideoOverlay => o.kind === "broll-video");
+  return brolls.filter((o) => ms >= o.startMs && ms < o.startMs + o.durationMs);
 }
 
-export function findTopmostActive(overlays: OverlayItem[], ms: number): OverlayItem | null {
+export function findTopmostActive(
+  overlays: OverlayItem[],
+  ms: number,
+): BrollVideoOverlay | null {
   const active = findActiveOverlays(overlays, ms);
   if (active.length === 0) return null;
   return active.reduce((max, o) => (o.trackIndex > max.trackIndex ? o : max), active[0]!);

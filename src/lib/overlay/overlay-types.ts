@@ -18,7 +18,30 @@ export interface BrollVideoOverlay extends OverlayBase {
   sourceDurationMs: number;
 }
 
-// Future: add AudioFxOverlay (kind: "audio-fx") and TextOverlay (kind: "text") here and to OverlayItem union.
+export interface TextOverlay extends OverlayBase {
+  kind: "text";
+  text: string;
+  source: "auto-script" | "manual";
+  sectionLineNumber?: number;
+  // Style (all numbers are 0..1 fractions of output dimensions where applicable).
+  fontFamily: "Inter" | "Roboto" | "Open Sans";
+  fontWeight: 400 | 500 | 600 | 700;
+  fontSizeFrac: number;
+  textColor: string;
+  bgMode: "none" | "block" | "per-line";
+  bgColor: string;
+  bgOpacity: number;
+  bgPaddingXFrac: number;
+  bgPaddingYFrac: number;
+  bgRadiusFrac: number;
+  strokeEnabled: boolean;
+  strokeColor: string;
+  strokeWidthFrac: number;
+  alignment: "left" | "center" | "right";
+  positionXFrac: number;
+  positionYFrac: number;
+  maxWidthFrac: number;
+}
 
-export type OverlayItem = BrollVideoOverlay;
+export type OverlayItem = BrollVideoOverlay | TextOverlay;
 export type OverlayKind = OverlayItem["kind"];

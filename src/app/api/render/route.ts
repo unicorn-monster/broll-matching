@@ -89,6 +89,42 @@ export async function POST(req: Request) {
     const audioPath = path.join(workDir, "audio.mp3");
     await writeFile(audioPath, Buffer.from(await audio.arrayBuffer()));
 
+    // Captions (optional): PNG files in `captions` field + metadata JSON in `captionsMetadata`.
+    // Each PNG is a tightly-cropped overlay image; metadata carries its absolute (x, y) pixel
+    // offset inside the output video and the [startMs, endMs) visibility window.
+    interface CaptionMeta {
+      index: number;
+      startMs: number;
+      endMs: number;
+      xPx: number;
+      yPx: number;
+    }
+    const captionMetaRaw = formData.get("captionsMetadata");
+    let captionMeta: CaptionMeta[] = [];
+    if (typeof captionMetaRaw === "string") {
+      try {
+        const parsed = JSON.parse(captionMetaRaw) as unknown;
+        if (Array.isArray(parsed)) captionMeta = parsed as CaptionMeta[];
+      } catch {
+        return NextResponse.json({ error: "Invalid captionsMetadata JSON" }, { status: 400 });
+      }
+    }
+    const captionPaths: string[] = [];
+    const captionEntries = formData.getAll("captions");
+    for (let i = 0; i < captionEntries.length; i++) {
+      const entry = captionEntries[i];
+      if (!(entry instanceof File)) continue;
+      const dest = path.join(workDir, `caption-${i}.png`);
+      const buf = Buffer.from(await entry.arrayBuffer());
+      await writeFile(dest, buf);
+      captionPaths.push(dest);
+    }
+    if (captionPaths.length !== captionMeta.length) {
+      return NextResponse.json({
+        error: `captions count mismatch: ${captionPaths.length} files vs ${captionMeta.length} metadata entries`,
+      }, { status: 400 });
+    }
+
     // Encode each timeline entry into an MPEG-TS segment. MPEG-TS is the standard
     // intermediate for `-c copy` concatenation — every segment shares identical codec
     // params (libx264 yuv420p 30fps), so the final concat does not re-encode.
@@ -198,15 +234,58 @@ export async function POST(req: Request) {
     const concatListPath = path.join(workDir, "list.txt");
     await writeFile(concatListPath, segments.map((p) => `file '${p}'`).join("\n"));
     const outputPath = path.join(workDir, "output.mp4");
-    await runFFmpeg([
-      "-y",
-      "-f", "concat", "-safe", "0", "-i", concatListPath,
-      "-i", audioPath,
-      "-c:v", "copy",
-      "-c:a", "aac",
-      "-shortest",
-      outputPath,
-    ]);
+
+    if (captionPaths.length === 0) {
+      // Fast path — no captions, zero re-encode for video (concat demuxer + stream copy).
+      await runFFmpeg([
+        "-y",
+        "-f", "concat", "-safe", "0", "-i", concatListPath,
+        "-i", audioPath,
+        "-c:v", "copy",
+        "-c:a", "aac",
+        "-shortest",
+        outputPath,
+      ]);
+    } else {
+      // Captions present — chain `overlay` filters with `enable='between(t,a,b)'` so each
+      // caption is visible only inside its time window. This requires re-encoding video
+      // (filter graph cannot run with `-c:v copy`), so we re-encode with veryfast/yuv420p
+      // for browser compatibility while keeping audio as a straight AAC mux.
+      const captionInputs: string[] = [];
+      for (const p of captionPaths) captionInputs.push("-i", p);
+
+      const filterParts: string[] = [];
+      let prev = "0:v";
+      for (let i = 0; i < captionMeta.length; i++) {
+        const m = captionMeta[i]!;
+        const next = i === captionMeta.length - 1 ? "vout" : `v${i + 1}`;
+        // Input indexes: 0=concat (video-only), 1=audio, captions start at 2.
+        const inputIdx = i + 2;
+        const startSec = (m.startMs / 1000).toFixed(3);
+        const endSec = (m.endMs / 1000).toFixed(3);
+        filterParts.push(
+          `[${prev}][${inputIdx}:v]overlay=${m.xPx}:${m.yPx}:enable='between(t,${startSec},${endSec})'[${next}]`,
+        );
+        prev = next;
+      }
+
+      await runFFmpeg([
+        "-y",
+        "-f", "concat", "-safe", "0", "-i", concatListPath,
+        "-i", audioPath,
+        ...captionInputs,
+        "-filter_complex", filterParts.join(";"),
+        "-map", "[vout]",
+        "-map", "1:a",
+        "-c:v", "libx264",
+        "-preset", "veryfast",
+        "-pix_fmt", "yuv420p",
+        "-r", String(FPS),
+        "-c:a", "aac",
+        "-shortest",
+        outputPath,
+      ]);
+    }
 
     const buf = await readFile(outputPath);
     return new Response(new Uint8Array(buf), {

@@ -14,6 +14,7 @@ import { TALKING_HEAD_FILE_ID } from "@/lib/auto-match";
 import { findActiveOverlays, findTopmostActive, computeFadedVolume } from "@/lib/overlay/overlay-render-plan";
 
 import { formatMs } from "@/lib/format-time";
+import { TextOverlayLayer } from "./text-overlay-layer";
 
 function setVideoSrcIfChanged(video: HTMLVideoElement, url: string) {
   if (video.src === url || video.currentSrc === url) return;
@@ -43,6 +44,19 @@ export function PreviewPlayer() {
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
   const overlayVideoRefs = useRef<Map<string, HTMLVideoElement | null>>(new Map());
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const previewFrameRef = useRef<HTMLDivElement | null>(null);
+  const [frameSize, setFrameSize] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    if (!previewFrameRef.current) return;
+    const el = previewFrameRef.current;
+    const ro = new ResizeObserver(() => {
+      setFrameSize({ width: el.clientWidth, height: el.clientHeight });
+    });
+    ro.observe(el);
+    setFrameSize({ width: el.clientWidth, height: el.clientHeight });
+    return () => ro.disconnect();
+  }, []);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [clipUrls, setClipUrls] = useState<Map<string, string>>(new Map());
   const clipUrlsRef = useRef<Map<string, string>>(new Map());
@@ -418,6 +432,7 @@ export function PreviewPlayer() {
   return (
     <div className="h-full flex flex-col items-center justify-center gap-2 p-3">
       <div
+        ref={previewFrameRef}
         className="bg-black rounded overflow-hidden flex items-center justify-center relative"
         style={{ aspectRatio: "4 / 5", height: "calc(100% - 48px)", maxWidth: "100%" }}
       >
@@ -450,6 +465,9 @@ export function PreviewPlayer() {
             style={{ zIndex: o.trackIndex + 10, display: "none" }}
           />
         ))}
+        {frameSize.width > 0 && frameSize.height > 0 && (
+          <TextOverlayLayer frameWidthPx={frameSize.width} frameHeightPx={frameSize.height} />
+        )}
       </div>
       <audio ref={audioRef} src={audioUrl ?? undefined} preload="auto" />
 

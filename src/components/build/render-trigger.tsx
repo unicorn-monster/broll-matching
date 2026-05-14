@@ -7,14 +7,17 @@ import { OutputSizeSelect, type OutputSize, isValidSize } from "@/components/ren
 import type { MatchedSection } from "@/lib/auto-match";
 import { TALKING_HEAD_FILE_ID } from "@/lib/auto-match";
 import { useBuildState } from "@/components/build/build-state-context";
+import { renderTextOverlayToPNGBytes } from "@/lib/text-overlay/text-overlay-render";
+import type { TextOverlay } from "@/lib/overlay/overlay-types";
 
 interface RenderTriggerProps {
   audioFile: File;
   audioDurationMs: number;
   timeline: MatchedSection[];
+  includeCaptions?: boolean;
 }
 
-export function RenderTrigger({ audioFile, audioDurationMs, timeline }: RenderTriggerProps) {
+export function RenderTrigger({ audioFile, audioDurationMs, timeline, includeCaptions = false }: RenderTriggerProps) {
   const [rendering, setRendering] = useState(false);
   const [stage, setStage] = useState<"uploading" | "rendering" | null>(null);
   const [uploadPct, setUploadPct] = useState(0);
@@ -23,7 +26,7 @@ export function RenderTrigger({ audioFile, audioDurationMs, timeline }: RenderTr
   const startedAtRef = useRef<number | null>(null);
   const xhrRef = useRef<XMLHttpRequest | null>(null);
   const mediaPool = useMediaPool();
-  const { talkingHeadFile } = useBuildState();
+  const { talkingHeadFile, overlays } = useBuildState();
   const [outputSize, setOutputSize] = useState<OutputSize>({ width: 1080, height: 1350 });
 
   useEffect(() => {
@@ -72,6 +75,47 @@ export function RenderTrigger({ audioFile, audioDurationMs, timeline }: RenderTr
 
       if (talkingHeadFile && usedFileIds.has(TALKING_HEAD_FILE_ID)) {
         fd.append("clips", new File([talkingHeadFile], TALKING_HEAD_FILE_ID));
+      }
+
+      // Caption payload: PNG per visible text overlay + JSON metadata (timing + pixel position).
+      // PNGs are cropped to each overlay's measured box, so ffmpeg `overlay=x:y` places them
+      // exactly where the editor's canvas preview shows them. Dimensions match `outputSize`
+      // so pixel positions are valid in the same coordinate space as the server-side video.
+      if (includeCaptions) {
+        const texts = overlays.filter((o): o is TextOverlay => o.kind === "text");
+        const captionMeta: Array<{
+          index: number;
+          startMs: number;
+          endMs: number;
+          xPx: number;
+          yPx: number;
+        }> = [];
+        for (const t of texts) {
+          const text = t.text || "";
+          if (text.trim().length === 0) continue;
+          const { bytes, box } = await renderTextOverlayToPNGBytes(
+            text,
+            t,
+            outputSize.width,
+            outputSize.height,
+          );
+          // Wrap Uint8Array → Blob → File so FormData ships it as a binary part.
+          const blob = new Blob([new Uint8Array(bytes)], { type: "image/png" });
+          fd.append(
+            "captions",
+            new File([blob], `caption-${captionMeta.length}.png`, { type: "image/png" }),
+          );
+          captionMeta.push({
+            index: captionMeta.length,
+            startMs: t.startMs,
+            endMs: t.startMs + t.durationMs,
+            xPx: box.x,
+            yPx: box.y,
+          });
+        }
+        if (captionMeta.length > 0) {
+          fd.append("captionsMetadata", JSON.stringify(captionMeta));
+        }
       }
 
       const blob = await postWithProgress("/api/render", fd, {
