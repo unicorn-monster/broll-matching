@@ -102,10 +102,11 @@ export function drawTextOverlay(
       Math.round(style.bgRadiusFrac * pillHeight),
       Math.round(pillHeight / 2),
     );
-    const totalLines = box.lines.length;
-    for (let i = 0; i < totalLines; i++) {
-      const line = box.lines[i]!;
-      if (line.length === 0) continue;
+
+    // First pass: compute each pill's pixel geometry so we can do smart corner detection.
+    interface PillGeom { x: number; y: number; width: number; height: number }
+    const pills: (PillGeom | null)[] = box.lines.map((line, i) => {
+      if (line.length === 0) return null;
       const lineWidthPx = ctx.measureText(line).width;
       const pillWidth = Math.round(lineWidthPx + 2 * box.paddingXPx);
       let pillX: number;
@@ -117,18 +118,31 @@ export function drawTextOverlay(
         pillX = box.x + Math.round((box.width - pillWidth) / 2);
       }
       const textY = box.y + box.paddingYPx + i * box.lineHeight;
-      const pillY = textY - pillVerticalOffset;
-      // Only OUTER corners of the stacked group are rounded — inner edges where
-      // pills touch each other are flat so the group reads as one merged shape.
-      const isFirst = i === 0;
-      const isLast = i === totalLines - 1;
+      return { x: pillX, y: textY - pillVerticalOffset, width: pillWidth, height: pillHeight };
+    });
+
+    // Second pass: draw with corners rounded only when NOT covered by the adjacent pill.
+    // A corner at column cx is "covered" by an adjacent pill that spans [adj.x, adj.x + adj.width]
+    // if adj.x ≤ cx ≤ adj.x + adj.width. Covered corners are flat (so pills merge cleanly);
+    // exposed corners stay rounded (so wings where pills differ in width still look soft).
+    for (let i = 0; i < pills.length; i++) {
+      const p = pills[i];
+      if (!p) continue;
+      const above = i > 0 ? pills[i - 1] : null;
+      const below = i < pills.length - 1 ? pills[i + 1] : null;
+      const leftX = p.x;
+      const rightX = p.x + p.width;
+      const tlCovered = above != null && above.x <= leftX && leftX <= above.x + above.width;
+      const trCovered = above != null && above.x <= rightX && rightX <= above.x + above.width;
+      const blCovered = below != null && below.x <= leftX && leftX <= below.x + below.width;
+      const brCovered = below != null && below.x <= rightX && rightX <= below.x + below.width;
       const radii: CornerRadii = {
-        tl: isFirst ? pillRadius : 0,
-        tr: isFirst ? pillRadius : 0,
-        br: isLast ? pillRadius : 0,
-        bl: isLast ? pillRadius : 0,
+        tl: tlCovered ? 0 : pillRadius,
+        tr: trCovered ? 0 : pillRadius,
+        br: brCovered ? 0 : pillRadius,
+        bl: blCovered ? 0 : pillRadius,
       };
-      roundRect(ctx, pillX, pillY, pillWidth, pillHeight, radii);
+      roundRect(ctx, p.x, p.y, p.width, p.height, radii);
       ctx.fill();
     }
   }
