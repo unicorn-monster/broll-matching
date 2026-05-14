@@ -22,6 +22,7 @@ export function TimelinePanel() {
     audioDuration,
     selectedSectionIndex,
     setSelectedSectionIndex,
+    toggleSectionLock,
     playheadMs,
     playerSeekRef,
     isPlaying,
@@ -110,6 +111,7 @@ export function TimelinePanel() {
                 pxPerSecond={effectivePxPerSec}
                 selectedIndex={selectedSectionIndex}
                 onSelect={setSelectedSectionIndex}
+                onToggleLock={toggleSectionLock}
               />
               <OverlayTracks pxPerSecond={effectivePxPerSec} />
               <TrackClips

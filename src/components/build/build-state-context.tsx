@@ -23,6 +23,7 @@ interface BuildState {
   timeline: MatchedSection[] | null;
   setTimeline: (t: MatchedSection[]) => void;
   shuffleTimeline: () => void;
+  toggleSectionLock: (index: number) => void;
   onParsed: (s: ParsedSection[], t: MatchedSection[]) => void;
   clearParsed: () => void;
 
@@ -188,6 +189,17 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
     toast.success(buildShuffleToast(result));
   }, [timeline, mediaPoolClips, talkingHeadFile, talkingHeadTag]);
 
+  const toggleSectionLock = useCallback((index: number) => {
+    setTimeline((prev) => {
+      if (!prev) return prev;
+      const target = prev[index];
+      if (!target) return prev;
+      const next = [...prev];
+      next[index] = { ...target, userLocked: !target.userLocked };
+      return next;
+    });
+  }, []);
+
   function onParsed(s: ParsedSection[], t: MatchedSection[]) {
     setSections(s);
     setTimeline(t);
@@ -228,6 +240,7 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
       timeline,
       setTimeline,
       shuffleTimeline,
+      toggleSectionLock,
       onParsed,
       clearParsed,
       selectedSectionIndex,
@@ -270,6 +283,7 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
     sections,
     timeline,
     shuffleTimeline,
+    toggleSectionLock,
     selectedSectionIndex,
     playheadMs,
     audioDialogOpen,
