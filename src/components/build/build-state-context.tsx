@@ -3,11 +3,13 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { MutableRefObject } from "react";
+import { toast } from "sonner";
 import type { MatchedSection } from "@/lib/auto-match";
 import { buildClipsByBaseName, TALKING_HEAD_FILE_ID } from "@/lib/auto-match";
 import { preserveLocks } from "@/lib/lock-preserve";
 import type { ParsedSection } from "@/lib/script-parser";
 import type { OverlayItem } from "@/lib/overlay/overlay-types";
+import { shuffleTimeline as shuffleTimelineHelper, type ShuffleResult } from "@/lib/shuffle";
 import { useMediaPool } from "@/state/media-pool";
 
 interface BuildState {
@@ -20,6 +22,8 @@ interface BuildState {
   sections: ParsedSection[] | null;
   timeline: MatchedSection[] | null;
   setTimeline: (t: MatchedSection[]) => void;
+  shuffleTimeline: () => void;
+  toggleSectionLock: (index: number) => void;
   onParsed: (s: ParsedSection[], t: MatchedSection[]) => void;
   clearParsed: () => void;
 
@@ -68,6 +72,14 @@ interface BuildState {
 }
 
 const BuildStateContext = createContext<BuildState | null>(null);
+
+function buildShuffleToast(result: ShuffleResult): string {
+  const parts = [`Shuffled ${result.shuffledCount} section${result.shuffledCount === 1 ? "" : "s"}`];
+  if (result.lockedKeptCount > 0) parts.push(`${result.lockedKeptCount} locked kept`);
+  if (result.talkingHeadCount > 0) parts.push(`${result.talkingHeadCount} talking-head`);
+  if (result.placeholderCount > 0) parts.push(`${result.placeholderCount} unmatched`);
+  return parts.join(" · ");
+}
 
 export function BuildStateProvider({ children }: { children: React.ReactNode }) {
   const { videos: mediaPoolClips } = useMediaPool();
@@ -164,6 +176,30 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
     setAudioDuration(duration);
   }
 
+  const shuffleTimeline = useCallback(() => {
+    if (!timeline) return;
+    const clipsByBaseName = buildClipsByBaseName(mediaPoolClips);
+    const thConfig = talkingHeadFile && talkingHeadTag.length > 0
+      ? { fileId: TALKING_HEAD_FILE_ID, tag: talkingHeadTag }
+      : null;
+    const result = shuffleTimelineHelper(timeline, clipsByBaseName, thConfig);
+    setIsPlaying(false);
+    setTimeline(result.newTimeline);
+    setPreviewClipKey(null);
+    toast.success(buildShuffleToast(result));
+  }, [timeline, mediaPoolClips, talkingHeadFile, talkingHeadTag]);
+
+  const toggleSectionLock = useCallback((index: number) => {
+    setTimeline((prev) => {
+      if (!prev) return prev;
+      const target = prev[index];
+      if (!target) return prev;
+      const next = [...prev];
+      next[index] = { ...target, userLocked: !target.userLocked };
+      return next;
+    });
+  }, []);
+
   function onParsed(s: ParsedSection[], t: MatchedSection[]) {
     setSections(s);
     setTimeline(t);
@@ -203,6 +239,8 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
       sections,
       timeline,
       setTimeline,
+      shuffleTimeline,
+      toggleSectionLock,
       onParsed,
       clearParsed,
       selectedSectionIndex,
@@ -239,9 +277,13 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
     audioDuration,
     talkingHeadFile,
     talkingHeadTag,
+    setTalkingHead,
+    setTalkingHeadTag,
     scriptText,
     sections,
     timeline,
+    shuffleTimeline,
+    toggleSectionLock,
     selectedSectionIndex,
     playheadMs,
     audioDialogOpen,
@@ -251,8 +293,11 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
     previewClipKey,
     isPlaying,
     overlays,
+    setOverlays,
     selectedOverlayId,
     audioSelected,
+    countOverlaysUsingClips,
+    removeOverlaysReferencingClips,
   ]);
 
   return <BuildStateContext.Provider value={value}>{children}</BuildStateContext.Provider>;
