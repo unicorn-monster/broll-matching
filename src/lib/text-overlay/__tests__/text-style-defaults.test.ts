@@ -1,0 +1,25 @@
+import { describe, it, expect } from "vitest";
+import { DEFAULT_TEXT_STYLE, AVAILABLE_FONTS } from "../text-style-defaults";
+
+describe("DEFAULT_TEXT_STYLE", () => {
+  it("matches the design spec defaults", () => {
+    expect(DEFAULT_TEXT_STYLE.fontFamily).toBe("Inter");
+    expect(DEFAULT_TEXT_STYLE.fontWeight).toBe(700);
+    expect(DEFAULT_TEXT_STYLE.fontSizeFrac).toBeCloseTo(0.05);
+    expect(DEFAULT_TEXT_STYLE.textColor).toBe("#000000");
+    expect(DEFAULT_TEXT_STYLE.bgEnabled).toBe(true);
+    expect(DEFAULT_TEXT_STYLE.bgColor).toBe("#ffffff");
+    expect(DEFAULT_TEXT_STYLE.bgOpacity).toBe(1);
+    expect(DEFAULT_TEXT_STYLE.strokeEnabled).toBe(false);
+    expect(DEFAULT_TEXT_STYLE.alignment).toBe("center");
+    expect(DEFAULT_TEXT_STYLE.positionXFrac).toBeCloseTo(0.5);
+    expect(DEFAULT_TEXT_STYLE.positionYFrac).toBeCloseTo(0.85);
+    expect(DEFAULT_TEXT_STYLE.maxWidthFrac).toBeCloseTo(0.8);
+  });
+
+  it("registers Inter as the only available font in v1", () => {
+    expect(AVAILABLE_FONTS).toEqual([
+      { id: "Inter", label: "Classic", regular: "/fonts/Inter-Regular.ttf", bold: "/fonts/Inter-Bold.ttf" },
+    ]);
+  });
+});
