@@ -12,7 +12,9 @@ export interface OverlayPixelBox {
   paddingYPx: number;
 }
 
-const LINE_HEIGHT_MULTIPLIER = 1.25;
+// 1.31 gives ~12px vertical padding around the text inside each per-line pill at the
+// default font size (4% × 1920 = 77px → padding ≈ (77 × 0.31) / 2 ≈ 12px).
+const LINE_HEIGHT_MULTIPLIER = 1.31;
 
 export function wrapTextToLines(
   ctx: CanvasRenderingContext2D,
