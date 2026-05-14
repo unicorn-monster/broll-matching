@@ -12,7 +12,7 @@ export const TEXT_OVERLAY_LEAD_MS = 0;
 export const DEFAULT_TEXT_STYLE: TextStyle = {
   fontFamily: "Inter",
   fontWeight: 500,
-  fontSizeFrac: 0.05,
+  fontSizeFrac: 0.04,
   textColor: "#000000",
   bgMode: "per-line",
   bgColor: "#ffffff",

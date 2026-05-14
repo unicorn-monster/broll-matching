@@ -163,7 +163,7 @@ export function splitIntoMaxLines(
     const fontSizePx = Math.round(o.fontSizeFrac * refOutputHeightPx);
     const paddingXPx = Math.round(o.bgPaddingXFrac * refOutputWidthPx);
     const maxTextWidthPx = Math.round(o.maxWidthFrac * refOutputWidthPx) - 2 * paddingXPx;
-    ctx.font = `${o.fontWeight} ${fontSizePx}px ${o.fontFamily}, sans-serif`;
+    ctx.font = `${o.fontWeight} ${fontSizePx}px "${o.fontFamily}", sans-serif`;
     const lines = wrapTextToLines(ctx, o.text, Math.max(10, maxTextWidthPx));
     if (lines.length <= maxLines) { out.push(o); continue; }
 

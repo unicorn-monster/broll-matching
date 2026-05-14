@@ -111,12 +111,12 @@ export function TextOverlayInspector({ overlayId }: Props) {
       <div className="space-y-1">
         <div className="flex justify-between">
           <span>Font size</span>
-          <span className="font-mono">{Math.round(overlay.fontSizeFrac * 100)}%</span>
+          <span className="font-mono">{Math.round(overlay.fontSizeFrac * 200)}</span>
         </div>
         <input
-          type="range" min={2} max={15} step={1}
-          value={Math.round(overlay.fontSizeFrac * 100)}
-          onChange={(e) => onPatchStyle({ fontSizeFrac: Number(e.target.value) / 100 })}
+          type="range" min={1} max={20} step={1}
+          value={Math.round(overlay.fontSizeFrac * 200)}
+          onChange={(e) => onPatchStyle({ fontSizeFrac: Number(e.target.value) / 200 })}
           className="w-full"
         />
       </div>

@@ -5,7 +5,7 @@ describe("DEFAULT_TEXT_STYLE", () => {
   it("matches the design spec defaults", () => {
     expect(DEFAULT_TEXT_STYLE.fontFamily).toBe("Inter");
     expect(DEFAULT_TEXT_STYLE.fontWeight).toBe(500);
-    expect(DEFAULT_TEXT_STYLE.fontSizeFrac).toBeCloseTo(0.05);
+    expect(DEFAULT_TEXT_STYLE.fontSizeFrac).toBeCloseTo(0.04);
     expect(DEFAULT_TEXT_STYLE.textColor).toBe("#000000");
     expect(DEFAULT_TEXT_STYLE.bgMode).toBe("per-line");
     expect(DEFAULT_TEXT_STYLE.bgColor).toBe("#ffffff");

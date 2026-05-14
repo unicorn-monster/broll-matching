@@ -26,6 +26,7 @@ import { TextOverlayInspector } from "./overlay/text-overlay-inspector";
 import { AudioInspector } from "./audio/audio-inspector";
 import { Button } from "@/components/ui/button";
 import { formatMs } from "@/lib/format-time";
+import { preloadTextOverlayFonts } from "@/lib/text-overlay/font-loader";
 
 export function EditorShell() {
   const {
@@ -52,6 +53,12 @@ export function EditorShell() {
   } = useBuildState();
   const mediaPool = useMediaPool();
   const [clearAllOpen, setClearAllOpen] = useState(false);
+
+  // Fire-and-forget: warm up every (family, weight) used by text overlays so canvas-rendered
+  // captions don't fall back to sans-serif on first draw.
+  useEffect(() => {
+    void preloadTextOverlayFonts();
+  }, []);
 
   useEffect(() => {
     if (previewClipKey === null) return;

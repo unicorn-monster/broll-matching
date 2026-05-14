@@ -53,7 +53,7 @@ export function computeOverlayPixelBox(
   const paddingXPx = Math.round(style.bgPaddingXFrac * outputWidthPx);
   const paddingYPx = Math.round(style.bgPaddingYFrac * outputHeightPx);
   const maxTextWidthPx = Math.round(style.maxWidthFrac * outputWidthPx) - 2 * paddingXPx;
-  ctx.font = `${style.fontWeight} ${fontSizePx}px ${style.fontFamily}, sans-serif`;
+  ctx.font = `${style.fontWeight} ${fontSizePx}px "${style.fontFamily}", sans-serif`;
   const lines = wrapTextToLines(ctx, text, Math.max(10, maxTextWidthPx));
   const widestLinePx = lines.reduce((m, l) => Math.max(m, ctx.measureText(l).width), 0);
   const lineHeight = Math.round(fontSizePx * LINE_HEIGHT_MULTIPLIER);
@@ -83,7 +83,7 @@ export function drawTextOverlay(
   const box = computeOverlayPixelBox(ctx, text, style, outputWidthPx, outputHeightPx);
   ctx.save();
   ctx.translate(-box.x, -box.y);
-  ctx.font = `${style.fontWeight} ${box.fontSizePx}px ${style.fontFamily}, sans-serif`;
+  ctx.font = `${style.fontWeight} ${box.fontSizePx}px "${style.fontFamily}", sans-serif`;
   ctx.textBaseline = "top";
 
   if (style.bgMode === "block") {
