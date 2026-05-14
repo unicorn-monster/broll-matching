@@ -8,6 +8,7 @@ import { TimelineRuler } from "./timeline-ruler";
 import { TrackTags } from "./track-tags";
 import { TrackClips } from "./track-clips";
 import { TrackAudio } from "./track-audio";
+import { TrackTextOverlays } from "./track-text-overlays";
 import { OverlayTracks } from "../overlay/overlay-tracks";
 import { useAudioKeyboard } from "../audio/use-audio-keyboard";
 
@@ -104,6 +105,7 @@ export function TimelinePanel() {
           onClick={handleScrubClick}
         >
           <TimelineRuler totalMs={renderMs} pxPerSecond={effectivePxPerSec} />
+          <TrackTextOverlays pxPerSecond={effectivePxPerSec} />
           {timeline ? (
             <>
               <TrackTags
