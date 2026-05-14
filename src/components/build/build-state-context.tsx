@@ -128,7 +128,7 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
   const countOverlaysUsingClips = useCallback(
     (clipIds: string[]) => {
       const set = new Set(clipIds);
-      return overlays.filter((o) => set.has(o.clipId)).length;
+      return overlays.filter((o) => o.kind === "broll-video" && set.has(o.clipId)).length;
     },
     [overlays],
   );
@@ -139,7 +139,7 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
       let removed = 0;
       setOverlaysState((prev) => {
         const next = prev.filter((o) => {
-          if (set.has(o.clipId)) { removed++; return false; }
+          if (o.kind === "broll-video" && set.has(o.clipId)) { removed++; return false; }
           return true;
         });
         return next;
