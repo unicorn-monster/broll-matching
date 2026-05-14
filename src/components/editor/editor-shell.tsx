@@ -11,6 +11,8 @@ import { ScriptPill } from "./toolbar/script-pill";
 import { TalkingHeadPill } from "./toolbar/talking-head-pill";
 import { ExportButton } from "./toolbar/export-button";
 import { ShuffleButton } from "./toolbar/shuffle-button";
+import { GenerateCaptionsButton } from "./toolbar/generate-captions-button";
+import { AddTextButton } from "./toolbar/add-text-button";
 import { AudioDialog } from "./dialogs/audio-dialog";
 import { ScriptDialog } from "./dialogs/script-dialog";
 import { TalkingHeadDialog } from "./dialogs/talking-head-dialog";
@@ -91,6 +93,8 @@ export function EditorShell() {
           <TalkingHeadPill />
         </div>
         <div className="ml-auto flex items-center gap-2">
+          <GenerateCaptionsButton />
+          <AddTextButton />
           <ShuffleButton />
           <ExportButton />
         </div>
