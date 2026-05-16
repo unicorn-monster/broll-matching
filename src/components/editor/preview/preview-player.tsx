@@ -10,7 +10,6 @@ import {
   findSectionAtMs,
   clipIdentityKey,
 } from "@/lib/playback-plan";
-import { TALKING_HEAD_FILE_ID } from "@/lib/auto-match";
 import { findActiveOverlays, findTopmostActive, computeFadedVolume } from "@/lib/overlay/overlay-render-plan";
 
 import { formatMs } from "@/lib/format-time";
@@ -24,7 +23,7 @@ function setVideoSrcIfChanged(video: HTMLVideoElement, url: string) {
 export function PreviewPlayer() {
   const {
     audioFile,
-    talkingHeadFile,
+    talkingHeadFiles,
     timeline,
     selectedSectionIndex,
     setSelectedSectionIndex,
@@ -79,17 +78,19 @@ export function PreviewPlayer() {
     return () => URL.revokeObjectURL(url);
   }, [audioFile]);
 
-  // Talking-head blob URL — tied to the File object lifetime.
-  const [talkingHeadUrl, setTalkingHeadUrl] = useState<string | null>(null);
+  // Per-layer talking-head blob URLs, keyed by the layer's fileId. Recomputed whenever
+  // the set of files changes; previous URLs are revoked on cleanup to avoid leaks.
+  const [thUrls, setThUrls] = useState<Map<string, string>>(new Map());
   useEffect(() => {
-    if (!talkingHeadFile) {
-      setTalkingHeadUrl(null);
-      return;
+    const next = new Map<string, string>();
+    for (const [fileId, file] of talkingHeadFiles) {
+      next.set(fileId, URL.createObjectURL(file));
     }
-    const url = URL.createObjectURL(talkingHeadFile);
-    setTalkingHeadUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [talkingHeadFile]);
+    setThUrls(next);
+    return () => {
+      for (const url of next.values()) URL.revokeObjectURL(url);
+    };
+  }, [talkingHeadFiles]);
 
   // Populate clip URL cache from mediaPool (synchronous — no IndexedDB read).
   useEffect(() => {
@@ -114,20 +115,26 @@ export function PreviewPlayer() {
       clipUrlsRef.current.set(o.fileId, url);
       additions.set(o.fileId, url);
     }
-    // Inject the synthetic talking-head URL so the playback plan can resolve it.
-    if (talkingHeadUrl) {
-      if (!clipUrlsRef.current.has(TALKING_HEAD_FILE_ID) ||
-          clipUrlsRef.current.get(TALKING_HEAD_FILE_ID) !== talkingHeadUrl) {
-        clipUrlsRef.current.set(TALKING_HEAD_FILE_ID, talkingHeadUrl);
-        additions.set(TALKING_HEAD_FILE_ID, talkingHeadUrl);
+    // Sync per-layer talking-head URLs into the playback-plan cache. Each TH layer's
+    // fileId is unique (prefixed `__th_layer__`) so it cannot collide with media-pool ids.
+    // Stale layer ids are pruned so a removed layer's URL doesn't linger in the cache.
+    const removalsForState: string[] = [];
+    for (const [fileId] of clipUrlsRef.current) {
+      if (fileId.startsWith("__th_layer__") && !thUrls.has(fileId)) {
+        clipUrlsRef.current.delete(fileId);
+        removalsForState.push(fileId);
       }
-    } else if (clipUrlsRef.current.has(TALKING_HEAD_FILE_ID)) {
-      clipUrlsRef.current.delete(TALKING_HEAD_FILE_ID);
-      // Drop from the React state Map so re-renders reflect the removal.
+    }
+    for (const [fileId, url] of thUrls) {
+      if (clipUrlsRef.current.get(fileId) !== url) {
+        clipUrlsRef.current.set(fileId, url);
+        additions.set(fileId, url);
+      }
+    }
+    if (removalsForState.length > 0) {
       setClipUrls((prev) => {
-        if (!prev.has(TALKING_HEAD_FILE_ID)) return prev;
         const next = new Map(prev);
-        next.delete(TALKING_HEAD_FILE_ID);
+        for (const k of removalsForState) next.delete(k);
         return next;
       });
     }
@@ -139,7 +146,7 @@ export function PreviewPlayer() {
         return next;
       });
     }
-  }, [timeline, overlays, mediaPool, talkingHeadUrl]);
+  }, [timeline, overlays, mediaPool, thUrls]);
 
   const plan = useMemo(() => {
     if (!timeline || !audioUrl) return null;

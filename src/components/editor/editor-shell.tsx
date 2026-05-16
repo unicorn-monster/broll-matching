@@ -8,14 +8,13 @@ import { useMediaPool } from "@/state/media-pool";
 import { DeleteFolderDialog } from "@/components/broll/delete-folder-dialog";
 import { AudioPill } from "./toolbar/audio-pill";
 import { ScriptPill } from "./toolbar/script-pill";
-import { TalkingHeadPill } from "./toolbar/talking-head-pill";
+import { TalkingHeadLayersButton } from "./toolbar/talking-head-layers-button";
 import { ExportButton } from "./toolbar/export-button";
 import { ShuffleButton } from "./toolbar/shuffle-button";
 import { GenerateCaptionsButton } from "./toolbar/generate-captions-button";
 import { AddTextButton } from "./toolbar/add-text-button";
 import { AudioDialog } from "./dialogs/audio-dialog";
 import { ScriptDialog } from "./dialogs/script-dialog";
-import { TalkingHeadDialog } from "./dialogs/talking-head-dialog";
 import { ExportDialog } from "./dialogs/export-dialog";
 import { LibraryPanel } from "./library/library-panel";
 import { TimelinePanel } from "./timeline/timeline-panel";
@@ -34,8 +33,6 @@ export function EditorShell() {
     setAudioDialogOpen,
     scriptDialogOpen,
     setScriptDialogOpen,
-    talkingHeadDialogOpen,
-    setTalkingHeadDialogOpen,
     exportDialogOpen,
     setExportDialogOpen,
     previewClipKey,
@@ -50,6 +47,7 @@ export function EditorShell() {
     timeline,
     selectedSectionIndex,
     playerSeekRef,
+    talkingHeadLayers,
   } = useBuildState();
   const mediaPool = useMediaPool();
   const [clearAllOpen, setClearAllOpen] = useState(false);
@@ -99,7 +97,7 @@ export function EditorShell() {
         <div className="flex items-center gap-2">
           <AudioPill />
           <ScriptPill />
-          <TalkingHeadPill />
+          <TalkingHeadLayersButton />
         </div>
         <div className="ml-auto flex items-center gap-2">
           <GenerateCaptionsButton />
@@ -133,6 +131,9 @@ export function EditorShell() {
             <div className="h-full p-4 space-y-3">
               <div className="rounded-md border border-purple-500/40 bg-purple-500/5 p-3 space-y-2">
                 <div className="text-xs font-semibold text-purple-300">Talking-head slice</div>
+                <div className="text-[10px] text-purple-300/80">
+                  Layer: {talkingHeadLayers.find((l) => l.tag === selectedSection.tag.toLowerCase())?.tag ?? "(unknown)"}
+                </div>
                 <div className="text-xs text-muted-foreground tabular-nums">
                   {formatMs(selectedSection.startMs)} → {formatMs(selectedSection.endMs)}
                   {" "}({(selectedSection.durationMs / 1000).toFixed(2)}s)
@@ -160,7 +161,6 @@ export function EditorShell() {
 
       <AudioDialog open={audioDialogOpen} onOpenChange={setAudioDialogOpen} />
       <ScriptDialog open={scriptDialogOpen} onOpenChange={setScriptDialogOpen} />
-      <TalkingHeadDialog open={talkingHeadDialogOpen} onOpenChange={setTalkingHeadDialogOpen} />
       <ExportDialog open={exportDialogOpen} onOpenChange={setExportDialogOpen} />
 
       {clearAllOpen ? (() => {
