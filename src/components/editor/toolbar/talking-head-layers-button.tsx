@@ -1,9 +1,9 @@
 "use client";
 
-import { Video } from "lucide-react";
+import { Plus, Video } from "lucide-react";
 import { useState } from "react";
 import { useBuildState } from "@/components/build/build-state-context";
-import { TalkingHeadLayersDialog } from "../dialogs/talking-head-layers-dialog";
+import { AddTalkingHeadDialog } from "../dialogs/add-talking-head-dialog";
 
 export function TalkingHeadLayersButton() {
   const { talkingHeadLayers } = useBuildState();
@@ -15,12 +15,14 @@ export function TalkingHeadLayersButton() {
         type="button"
         onClick={() => setOpen(true)}
         className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-border bg-background hover:bg-muted text-xs"
-        title="Manage talking-head layers"
+        title="Add a new talking-head layer"
       >
+        <Plus className="w-3.5 h-3.5" />
         <Video className="w-3.5 h-3.5" />
-        {n === 0 ? "Add talking-head" : `Talking-head: ${n}`}
+        Add talking-head
+        {n > 0 && <span className="text-muted-foreground">({n})</span>}
       </button>
-      <TalkingHeadLayersDialog open={open} onOpenChange={setOpen} />
+      <AddTalkingHeadDialog open={open} onOpenChange={setOpen} />
     </>
   );
 }
