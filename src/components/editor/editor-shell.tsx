@@ -75,7 +75,7 @@ export function EditorShell() {
       className="grid h-[calc(100vh-4rem)] w-full bg-background text-foreground"
       style={{
         gridTemplateColumns: "1fr 1fr 1fr",
-        gridTemplateRows: "48px 6fr 4fr",
+        gridTemplateRows: "48px 1fr 1fr",
       }}
     >
       <div className="col-span-3 row-start-1 flex items-center gap-3 px-3 border-b border-border bg-muted/30 text-sm">
