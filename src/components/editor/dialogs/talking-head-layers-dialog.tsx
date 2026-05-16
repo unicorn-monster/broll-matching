@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Trash2, Upload } from "lucide-react";
+import { Trash2, Video, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -16,6 +16,8 @@ interface Props {
   onOpenChange: (v: boolean) => void;
 }
 
+const DEFAULT_NEW_TAG = "talking-head";
+
 export function TalkingHeadLayersDialog({ open, onOpenChange }: Props) {
   const {
     talkingHeadLayers,
@@ -23,19 +25,28 @@ export function TalkingHeadLayersDialog({ open, onOpenChange }: Props) {
     removeTalkingHeadLayer,
     renameTalkingHeadLayer,
   } = useBuildState();
-  const [tag, setTag] = useState("");
+  const [tag, setTag] = useState(DEFAULT_NEW_TAG);
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   function reset() {
-    setTag("");
+    setTag(DEFAULT_NEW_TAG);
     setFile(null);
     setError(null);
     if (fileRef.current) fileRef.current.value = "";
   }
 
-  async function onAdd() {
+  function handleFile(f: File) {
+    if (!f.name.toLowerCase().endsWith(".mp4")) {
+      setError("File must be MP4.");
+      return;
+    }
+    setError(null);
+    setFile(f);
+  }
+
+  function onAdd() {
     if (!file) {
       setError("Pick an MP4.");
       return;
@@ -48,23 +59,30 @@ export function TalkingHeadLayersDialog({ open, onOpenChange }: Props) {
       setError("File is empty.");
       return;
     }
-    const result = await addTalkingHeadLayer({ tag, file });
+    const result = addTalkingHeadLayer({ tag, file });
     if (!result.ok) {
       setError(
-        result.reason === "duplicate-tag" ? "Tag already in use by another layer." :
-        result.reason === "empty-tag" ? "Tag is required." :
-        result.reason === "persist-failed" ? "Browser storage failed. File too big?" :
-        "Cannot add layer.",
+        result.reason === "duplicate-tag"
+          ? "Tag already in use by another layer."
+          : result.reason === "empty-tag"
+            ? "Tag is required."
+            : "Cannot add layer.",
       );
       return;
     }
     reset();
   }
 
-  async function onRename(id: string, newTag: string) {
-    const result = await renameTalkingHeadLayer(id, newTag);
+  function onRename(id: string, newTag: string) {
+    const result = renameTalkingHeadLayer(id, newTag);
     if (!result.ok) {
-      setError(result.reason === "duplicate-tag" ? "Tag already in use." : "Cannot rename.");
+      setError(
+        result.reason === "duplicate-tag"
+          ? "Tag already in use."
+          : result.reason === "empty-tag"
+            ? "Tag cannot be empty."
+            : "Cannot rename.",
+      );
     } else {
       setError(null);
     }
@@ -72,69 +90,120 @@ export function TalkingHeadLayersDialog({ open, onOpenChange }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!max-w-lg">
+      <DialogContent className="!max-w-3xl">
         <DialogHeader>
           <DialogTitle>Talking-head layers</DialogTitle>
           <DialogDescription>
-            Each layer maps one MP4 (audio ignored) to a script tag. Sections with that tag will be sliced from this video.
+            Each layer maps one MP4 (audio ignored) to a script tag. Sections with that tag will be sliced from this video. Session-only — re-add after a page reload.
           </DialogDescription>
         </DialogHeader>
 
+        {/* Existing layers */}
         <ul className="space-y-2">
           {talkingHeadLayers.map((l) => (
-            <li key={l.id} className="flex items-center gap-2 p-2 rounded-md border border-border bg-muted/30">
+            <li
+              key={l.id}
+              className="flex items-center gap-3 p-2.5 rounded-md border border-border bg-muted/30"
+            >
+              <Video className="w-4 h-4 text-purple-300 shrink-0" />
               <input
                 defaultValue={l.tag}
                 onBlur={(e) => {
                   const v = e.target.value;
-                  if (v !== l.tag) void onRename(l.id, v);
+                  if (v !== l.tag) onRename(l.id, v);
                 }}
-                className="flex-1 px-2 py-1 text-xs bg-background border border-border rounded"
+                className="flex-1 px-2 py-1 text-sm bg-background border border-border rounded font-mono"
               />
               <button
-                onClick={() => void removeTalkingHeadLayer(l.id)}
-                className="p-1 text-red-400 hover:bg-red-500/10 rounded"
+                onClick={() => removeTalkingHeadLayer(l.id)}
+                className="p-1.5 text-red-400 hover:bg-red-500/10 rounded"
                 aria-label={`Delete layer ${l.tag}`}
               >
-                <Trash2 className="w-3.5 h-3.5" />
+                <Trash2 className="w-4 h-4" />
               </button>
             </li>
           ))}
           {talkingHeadLayers.length === 0 && (
-            <li className="text-xs text-muted-foreground italic">No layers yet.</li>
+            <li className="text-sm text-muted-foreground italic px-2">No layers yet.</li>
           )}
         </ul>
 
-        <div className="pt-3 border-t border-border space-y-2">
-          <div className="text-xs font-medium">Add new</div>
-          <div className="flex gap-2">
-            <input
-              value={tag}
-              onChange={(e) => setTag(e.target.value)}
-              placeholder="tag (e.g. doctor)"
-              className="flex-1 px-2 py-1 text-xs bg-background border border-border rounded"
-            />
+        {/* Add new — 2 columns */}
+        <div className="pt-4 border-t border-border space-y-3">
+          <div className="text-sm font-medium">Add new layer</div>
+          <div className="grid grid-cols-[1fr_1.5fr] gap-4">
+            {/* Left: tag */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Tag</label>
+              <input
+                value={tag}
+                onChange={(e) => setTag(e.target.value)}
+                placeholder="talking-head"
+                className="w-full px-3 py-2 text-sm bg-background border border-border rounded-md font-mono"
+              />
+              <p className="text-xs text-muted-foreground">
+                Sections in your script with this tag will play this video.
+              </p>
+            </div>
+            {/* Right: dropzone */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Video (MP4, audio ignored)</label>
+              {file ? (
+                <div className="flex items-center gap-3 p-3 border border-border rounded-md bg-muted/30">
+                  <Video className="w-5 h-5 text-primary shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{file.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {(file.size / 1024 / 1024).toFixed(1)} MB
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setFile(null)}
+                    className="text-muted-foreground hover:text-foreground"
+                    aria-label="Clear file"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <div
+                  className="border-2 border-dashed border-border rounded-md p-5 flex flex-col items-center gap-2 cursor-pointer hover:bg-muted/20"
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const f = e.dataTransfer.files[0];
+                    if (f) handleFile(f);
+                  }}
+                  onDragOver={(e) => e.preventDefault()}
+                  onClick={() => fileRef.current?.click()}
+                >
+                  <Video className="w-7 h-7 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">Drop MP4 here or click to browse</p>
+                </div>
+              )}
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".mp4,video/mp4"
+                hidden
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleFile(f);
+                }}
+              />
+            </div>
+          </div>
+
+          {error && <div className="text-xs text-red-400">{error}</div>}
+
+          <div className="flex justify-end">
             <button
-              onClick={() => fileRef.current?.click()}
-              className="flex items-center gap-1 px-2 py-1 text-xs border border-border rounded hover:bg-muted"
+              onClick={onAdd}
+              disabled={!file || tag.trim().length === 0}
+              className="px-4 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Upload className="w-3 h-3" /> {file ? file.name.slice(0, 20) : "Pick MP4"}
-            </button>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="video/mp4"
-              hidden
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            />
-            <button
-              onClick={() => void onAdd()}
-              className="px-3 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90"
-            >
-              Add
+              Add layer
             </button>
           </div>
-          {error && <div className="text-xs text-red-400">{error}</div>}
         </div>
       </DialogContent>
     </Dialog>

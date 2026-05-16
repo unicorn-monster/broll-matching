@@ -17,12 +17,6 @@ import {
   removeLayer as removeLayerPure,
   renameLayer as renameLayerPure,
 } from "@/lib/talking-head/talking-head-store";
-import {
-  loadAllTalkingHeadLayers,
-  persistTalkingHeadLayer,
-  persistTalkingHeadLayerTagOnly,
-  deleteTalkingHeadLayer as deleteTalkingHeadLayerDB,
-} from "@/lib/talking-head/talking-head-storage";
 
 interface BuildState {
   // Project inputs
@@ -66,9 +60,9 @@ interface BuildState {
   // Talking-head layers (multi-layer model)
   talkingHeadLayers: TalkingHeadLayer[];
   talkingHeadFiles: Map<string, File>;
-  addTalkingHeadLayer: (args: { tag: string; file: File; label?: string }) => Promise<{ ok: boolean; reason?: string }>;
-  removeTalkingHeadLayer: (id: string) => Promise<void>;
-  renameTalkingHeadLayer: (id: string, newTag: string) => Promise<{ ok: boolean; reason?: string }>;
+  addTalkingHeadLayer: (args: { tag: string; file: File; label?: string }) => { ok: boolean; reason?: string };
+  removeTalkingHeadLayer: (id: string) => void;
+  renameTalkingHeadLayer: (id: string, newTag: string) => { ok: boolean; reason?: string };
 
   // Derived
   inspectorMode: "section" | "overlay" | "audio" | "empty";
@@ -118,28 +112,12 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
   const [talkingHeadLayers, setTalkingHeadLayers] = useState<TalkingHeadLayer[]>([]);
   const [talkingHeadFiles, setTalkingHeadFiles] = useState<Map<string, File>>(new Map());
 
-  // Hydrate talking-head layers from IndexedDB once on mount. Failures are logged but
-  // never throw — a missing DB just means "no layers yet" which is the empty default.
-  useEffect(() => {
-    loadAllTalkingHeadLayers()
-      .then(({ layers, files }) => {
-        setTalkingHeadLayers(layers);
-        setTalkingHeadFiles(files);
-      })
-      .catch((e) => console.error("[talking-head] load failed:", e));
-  }, []);
-
+  // Talking-head layers are session-only (in-memory) — no IndexedDB persistence by design.
+  // User re-adds via the modal after every reload.
   const addTalkingHeadLayer = useCallback(
-    async (args: { tag: string; file: File; label?: string }) => {
+    (args: { tag: string; file: File; label?: string }) => {
       const result = addLayerPure(talkingHeadLayers, args, talkingHeadFiles);
       if (!result.ok) return { ok: false, reason: result.reason };
-      const newLayer = result.layers[result.layers.length - 1]!;
-      try {
-        await persistTalkingHeadLayer(newLayer, args.file);
-      } catch (e) {
-        console.error("[talking-head] persist failed:", e);
-        return { ok: false, reason: "persist-failed" };
-      }
       setTalkingHeadLayers(result.layers);
       setTalkingHeadFiles(result.files);
       return { ok: true };
@@ -148,14 +126,9 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
   );
 
   const removeTalkingHeadLayer = useCallback(
-    async (id: string) => {
+    (id: string) => {
       const layer = talkingHeadLayers.find((l) => l.id === id);
       if (!layer) return;
-      try {
-        await deleteTalkingHeadLayerDB(id, layer.fileId);
-      } catch (e) {
-        console.error("[talking-head] delete from DB failed:", e);
-      }
       setTalkingHeadLayers((prev) => removeLayerPure(prev, id));
       setTalkingHeadFiles((prev) => {
         const next = new Map(prev);
@@ -167,15 +140,9 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
   );
 
   const renameTalkingHeadLayer = useCallback(
-    async (id: string, newTag: string) => {
+    (id: string, newTag: string) => {
       const result = renameLayerPure(talkingHeadLayers, id, newTag);
       if (!result.ok) return { ok: false, reason: result.reason };
-      const renamed = result.layers.find((l) => l.id === id)!;
-      try {
-        await persistTalkingHeadLayerTagOnly(renamed);
-      } catch (e) {
-        console.error("[talking-head] persist rename failed:", e);
-      }
       setTalkingHeadLayers(result.layers);
       return { ok: true };
     },
