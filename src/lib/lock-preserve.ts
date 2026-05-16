@@ -1,5 +1,6 @@
-import { matchSections, createMatchState, markUsed, type MatchedSection, type ClipMetadata, type TalkingHeadConfig } from "./auto-match";
+import { matchSections, createMatchState, markUsed, type MatchedSection, type ClipMetadata } from "./auto-match";
 import type { ParsedSection } from "./script-parser";
+import type { TalkingHeadLayer } from "@/lib/talking-head/talking-head-types";
 
 /**
  * When a section is re-pasted with the same tag and a near-identical duration, we
@@ -27,7 +28,7 @@ export function preserveLocks(
   oldTimeline: MatchedSection[],
   newSections: ParsedSection[],
   clipsByBaseName: Map<string, ClipMetadata[]>,
-  talkingHead?: TalkingHeadConfig | null,
+  talkingHeadLayers: TalkingHeadLayer[] = [],
 ): LockPreserveResult {
   const lockQueue = oldTimeline.filter((s) => s.userLocked);
   const newTimeline: MatchedSection[] = [];
@@ -74,7 +75,7 @@ export function preserveLocks(
       preservedCount++;
     } else {
       // matchSections returns one entry per input section, so this is always defined.
-      const matched = matchSections([ns], clipsByBaseName, state, talkingHead)[0]!;
+      const matched = matchSections([ns], clipsByBaseName, state, talkingHeadLayers)[0]!;
       newTimeline.push({ ...matched, sectionIndex: i });
     }
   }

@@ -5,10 +5,13 @@ import {
   computeChainSpeed,
   matchSections,
   validateChain,
-  TALKING_HEAD_FILE_ID,
 } from "../auto-match";
 import type { ClipMetadata } from "../auto-match";
 import type { ParsedSection } from "../script-parser";
+import type { TalkingHeadLayer } from "@/lib/talking-head/talking-head-types";
+
+const TH_LAYER_FILE_ID = "__th_layer__ugc";
+const thLayer: TalkingHeadLayer = { id: "ugc", tag: "ugc-head", fileId: TH_LAYER_FILE_ID };
 
 const makeClip = (brollName: string, durationMs: number) => ({
   id: brollName,
@@ -429,8 +432,6 @@ describe("matchSections — absolute positioning", () => {
 });
 
 describe("matchSections — talking-head branch", () => {
-  const thConfig = { fileId: TALKING_HEAD_FILE_ID, tag: "ugc-head" };
-
   it("emits a single talking-head clip with sourceSeekMs = section.startTime * 1000", () => {
     const sections: ParsedSection[] = [
       {
@@ -442,12 +443,12 @@ describe("matchSections — talking-head branch", () => {
         durationMs: 2660,
       },
     ];
-    const result = matchSections(sections, new Map(), undefined, thConfig);
+    const result = matchSections(sections, new Map(), undefined, [thLayer]);
     expect(result).toHaveLength(1);
     expect(result[0]!.clips).toEqual([
       {
         clipId: "talking-head",
-        fileId: TALKING_HEAD_FILE_ID,
+        fileId: TH_LAYER_FILE_ID,
         speedFactor: 1,
         trimDurationMs: 2660,
         sourceSeekMs: 24700,
@@ -468,12 +469,12 @@ describe("matchSections — talking-head branch", () => {
         durationMs: 1000,
       },
     ];
-    const result = matchSections(sections, new Map(), undefined, thConfig);
+    const result = matchSections(sections, new Map(), undefined, [thLayer]);
     expect(result[0]!.clips[0]!.sourceSeekMs).toBe(0);
-    expect(result[0]!.clips[0]!.fileId).toBe(TALKING_HEAD_FILE_ID);
+    expect(result[0]!.clips[0]!.fileId).toBe(TH_LAYER_FILE_ID);
   });
 
-  it("falls back to B-roll matcher when talkingHead is undefined", () => {
+  it("falls back to B-roll matcher when no talking-head layers are configured", () => {
     const sections: ParsedSection[] = [
       {
         lineNumber: 1,
@@ -484,12 +485,12 @@ describe("matchSections — talking-head branch", () => {
         durationMs: 1000,
       },
     ];
-    const result = matchSections(sections, new Map(), undefined, undefined);
+    const result = matchSections(sections, new Map(), undefined, []);
     expect(result[0]!.clips[0]!.isPlaceholder).toBe(true);
     expect(result[0]!.clips[0]!.sourceSeekMs).toBeUndefined();
   });
 
-  it("falls back to B-roll matcher when section tag does not match the configured talking-head tag", () => {
+  it("falls back to B-roll matcher when section tag does not match any layer tag", () => {
     const clip = makeClip("fs-clipper-freakout-01", 5000);
     const sections: ParsedSection[] = [
       {
@@ -505,7 +506,7 @@ describe("matchSections — talking-head branch", () => {
       sections,
       buildClipsByBaseName([clip]),
       undefined,
-      thConfig,
+      [thLayer],
     );
     expect(result[0]!.clips[0]!.fileId).toBe("fs-clipper-freakout-01");
     expect(result[0]!.clips[0]!.sourceSeekMs).toBeUndefined();
@@ -535,10 +536,10 @@ describe("matchSections — talking-head branch", () => {
       sections,
       buildClipsByBaseName([clip]),
       undefined,
-      thConfig,
+      [thLayer],
     );
     expect(result[0]!.clips[0]!.fileId).toBe("fs-clipper-freakout-01");
-    expect(result[1]!.clips[0]!.fileId).toBe(TALKING_HEAD_FILE_ID);
+    expect(result[1]!.clips[0]!.fileId).toBe(TH_LAYER_FILE_ID);
     expect(result[1]!.clips[0]!.sourceSeekMs).toBe(1000);
   });
 
@@ -553,7 +554,44 @@ describe("matchSections — talking-head branch", () => {
         durationMs: 0,
       },
     ];
-    const result = matchSections(sections, new Map(), undefined, thConfig);
+    const result = matchSections(sections, new Map(), undefined, [thLayer]);
     expect(result[0]!.clips).toEqual([]);
+  });
+});
+
+describe("matchSections — multi talking-head layers", () => {
+  const layerA: TalkingHeadLayer = { id: "a", tag: "doctor", fileId: "__th_layer__a" };
+  const layerB: TalkingHeadLayer = { id: "b", tag: "expert", fileId: "__th_layer__b" };
+
+  it("routes a section to the matching TH layer (by tag, case-insensitive)", () => {
+    const sections: ParsedSection[] = [
+      { lineNumber: 1, startTime: 0, endTime: 4, tag: "DOCTOR", scriptText: "x", durationMs: 4000 },
+    ];
+    const matched = matchSections(sections, new Map(), undefined, [layerA, layerB]);
+    expect(matched[0]!.clips).toHaveLength(1);
+    expect(matched[0]!.clips[0]!.fileId).toBe(layerA.fileId);
+    expect(matched[0]!.clips[0]!.sourceSeekMs).toBe(0);
+  });
+
+  it("TH wins over b-roll folder of the same name", () => {
+    const sections: ParsedSection[] = [
+      { lineNumber: 1, startTime: 0, endTime: 4, tag: "doctor", scriptText: "x", durationMs: 4000 },
+    ];
+    // ClipMetadata in this codebase uses `brollName` / `baseName` / `folderId`
+    // (not `folderName`). buildClipsByBaseName keys off deriveBaseName(brollName)
+    // so the brollName must lower-case to "doctor" for the collision.
+    const folder = buildClipsByBaseName([makeClip("doctor-01", 10000)]);
+    const matched = matchSections(sections, folder, undefined, [layerA]);
+    expect(matched[0]!.clips[0]!.fileId).toBe(layerA.fileId);
+  });
+
+  it("routes different sections to different layers", () => {
+    const sections: ParsedSection[] = [
+      { lineNumber: 1, startTime: 0, endTime: 4, tag: "doctor", scriptText: "x", durationMs: 4000 },
+      { lineNumber: 2, startTime: 4, endTime: 8, tag: "expert", scriptText: "y", durationMs: 4000 },
+    ];
+    const matched = matchSections(sections, new Map(), undefined, [layerA, layerB]);
+    expect(matched[0]!.clips[0]!.fileId).toBe(layerA.fileId);
+    expect(matched[1]!.clips[0]!.fileId).toBe(layerB.fileId);
   });
 });

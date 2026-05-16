@@ -1,8 +1,6 @@
 import { deriveBaseName } from "./broll";
 import type { ParsedSection } from "./script-parser";
-
-/** Synthetic fileId used for the singleton talking-head MP4 across all sliced clips. */
-export const TALKING_HEAD_FILE_ID = "__talking_head__";
+import type { TalkingHeadLayer } from "@/lib/talking-head/talking-head-types";
 
 /** Sections with any clip whose speedFactor exceeds this get a visual warning. */
 export const HIGH_SPEED_THRESHOLD = 2.0;
@@ -215,19 +213,19 @@ export function markUsed(state: MatchState, tagKey: string, clipId: string): voi
   recordPick(state, q, clipId, MAX_COOLDOWN);
 }
 
-export interface TalkingHeadConfig {
-  fileId: string;
-  /** Tag stored lowercase. Caller must normalise. */
-  tag: string;
-}
-
 export function matchSections(
   sections: ParsedSection[],
   clipsByBaseName: Map<string, ClipMetadata[]>,
   state?: MatchState,
-  talkingHead?: TalkingHeadConfig | null,
+  talkingHeadLayers: TalkingHeadLayer[] = [],
 ): MatchedSection[] {
   const s = state ?? createMatchState();
+  // Build the tag→layer lookup once per call so each section is O(1). Tags are
+  // stored lowercase on TalkingHeadLayer (`talking-head-store` normalises on
+  // write); section tags are lowercased at the lookup site below.
+  const layerByTag = new Map<string, TalkingHeadLayer>();
+  for (const l of talkingHeadLayers) layerByTag.set(l.tag, l);
+
   return sections.map((section, sectionIndex) => {
     const warnings: string[] = [];
     // Carry the absolute audio-timeline position through to MatchedSection so
@@ -240,7 +238,12 @@ export function matchSections(
       return { sectionIndex, tag: section.tag, startMs, endMs, durationMs: 0, clips: [], warnings };
     }
 
-    if (talkingHead && section.tag.toLowerCase() === talkingHead.tag) {
+    const key = section.tag.toLowerCase();
+
+    // TH layers win over any b-roll folder with a colliding name — a layer is an
+    // explicit user assignment, while a folder match is implicit.
+    const layer = layerByTag.get(key);
+    if (layer) {
       return {
         sectionIndex,
         tag: section.tag,
@@ -249,7 +252,7 @@ export function matchSections(
         durationMs: section.durationMs,
         clips: [{
           clipId: "talking-head",
-          fileId: talkingHead.fileId,
+          fileId: layer.fileId,
           speedFactor: 1,
           trimDurationMs: section.durationMs,
           sourceSeekMs: startMs,
@@ -259,7 +262,6 @@ export function matchSections(
       };
     }
 
-    const key = section.tag.toLowerCase();
     const candidates = clipsByBaseName.get(key) ?? [];
 
     if (candidates.length === 0) {

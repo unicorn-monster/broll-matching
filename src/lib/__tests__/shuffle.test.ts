@@ -2,10 +2,13 @@ import { describe, it, expect } from "vitest";
 import { shuffleTimeline } from "../shuffle";
 import {
   buildClipsByBaseName,
-  TALKING_HEAD_FILE_ID,
   type ClipMetadata,
   type MatchedSection,
 } from "../auto-match";
+
+// Synthetic fileId tagged with the layer prefix so `isLayerFileId` flags the
+// section as talking-head in `shuffleTimeline`.
+const TH_LAYER_FILE_ID = "__th_layer__ugc";
 
 const makeClip = (brollName: string, durationMs: number): ClipMetadata => ({
   id: brollName,
@@ -69,7 +72,7 @@ const thSection = (
   clips: [
     {
       clipId: "talking-head",
-      fileId: TALKING_HEAD_FILE_ID,
+      fileId: TH_LAYER_FILE_ID,
       speedFactor: 1,
       trimDurationMs: durationMs,
       sourceSeekMs: startMs,
@@ -104,7 +107,7 @@ const seededRng = (seed: number) => () => {
 describe("shuffleTimeline", () => {
   it("preserves talking-head sections byte-for-byte", () => {
     const old = [thSection(0, "talking-head", 0, 1000), thSection(1, "talking-head", 1000, 1000)];
-    const result = shuffleTimeline(old, new Map(), null, seededRng(1));
+    const result = shuffleTimeline(old, new Map(), [], seededRng(1));
     expect(result.newTimeline).toEqual(old);
     expect(result.talkingHeadCount).toBe(2);
     expect(result.shuffledCount).toBe(0);
@@ -118,7 +121,7 @@ describe("shuffleTimeline", () => {
     const old = [
       lockedSection(0, "hook", 0, 2000, [{ clipId: "hook-01", fileId: "hook-01" }]),
     ];
-    const result = shuffleTimeline(old, idx, null, seededRng(1));
+    const result = shuffleTimeline(old, idx, [], seededRng(1));
     expect(result.newTimeline[0]).toEqual(old[0]);
     expect(result.lockedKeptCount).toBe(1);
     expect(result.shuffledCount).toBe(0);
@@ -128,7 +131,7 @@ describe("shuffleTimeline", () => {
     const clips = [makeClip("hook-01", 5000), makeClip("hook-02", 5000)];
     const idx = buildClipsByBaseName(clips);
     const old = [autoSection(0, "hook", 0, 2000, "hook-01", "hook-01")];
-    const result = shuffleTimeline(old, idx, null, seededRng(1));
+    const result = shuffleTimeline(old, idx, [], seededRng(1));
     expect(result.shuffledCount).toBe(1);
     expect(result.newTimeline[0]!.clips[0]!.isPlaceholder).toBe(false);
     expect(["hook-01", "hook-02"]).toContain(result.newTimeline[0]!.clips[0]!.clipId);
@@ -141,8 +144,8 @@ describe("shuffleTimeline", () => {
       autoSection(0, "hook", 0, 2000, "hook-01", "hook-01"),
       autoSection(1, "hook", 2000, 2000, "hook-02", "hook-02"),
     ];
-    const a = shuffleTimeline(old, idx, null, seededRng(42));
-    const b = shuffleTimeline(old, idx, null, seededRng(42));
+    const a = shuffleTimeline(old, idx, [], seededRng(42));
+    const b = shuffleTimeline(old, idx, [], seededRng(42));
     expect(a.newTimeline).toEqual(b.newTimeline);
   });
 
@@ -153,7 +156,7 @@ describe("shuffleTimeline", () => {
       lockedSection(0, "hook", 0, 2000, [{ clipId: "hook-01", fileId: "hook-01" }]),
       autoSection(1, "hook", 2000, 2000, "hook-01", "hook-01"),
     ];
-    const result = shuffleTimeline(old, idx, null, seededRng(1));
+    const result = shuffleTimeline(old, idx, [], seededRng(1));
     expect(result.newTimeline[1]!.clips[0]!.clipId).toBe("hook-02");
     expect(result.lockedKeptCount).toBe(1);
     expect(result.shuffledCount).toBe(1);
@@ -162,7 +165,7 @@ describe("shuffleTimeline", () => {
   it("section with no candidate tag returns placeholder", () => {
     const idx = buildClipsByBaseName([]);
     const old = [autoSection(0, "unknown-tag", 0, 2000, "x", "x")];
-    const result = shuffleTimeline(old, idx, null, seededRng(1));
+    const result = shuffleTimeline(old, idx, [], seededRng(1));
     expect(result.newTimeline[0]!.clips[0]!.isPlaceholder).toBe(true);
     expect(result.placeholderCount).toBe(1);
     expect(result.shuffledCount).toBe(0);
@@ -175,7 +178,7 @@ describe("shuffleTimeline", () => {
       autoSection(7, "hook", 0, 2000, "hook-01", "hook-01"),
       autoSection(9, "hook", 2000, 2000, "hook-01", "hook-01"),
     ];
-    const result = shuffleTimeline(old, idx, null, seededRng(1));
+    const result = shuffleTimeline(old, idx, [], seededRng(1));
     expect(result.newTimeline[0]!.sectionIndex).toBe(7);
     expect(result.newTimeline[1]!.sectionIndex).toBe(9);
   });
@@ -189,7 +192,7 @@ describe("shuffleTimeline", () => {
       autoSection(2, "hook", 3000, 2000, "hook-01", "hook-01"),
       placeholderSection(3, "unknown", 5000, 2000),
     ];
-    const result = shuffleTimeline(old, idx, null, seededRng(1));
+    const result = shuffleTimeline(old, idx, [], seededRng(1));
     expect(result.talkingHeadCount).toBe(1);
     expect(result.lockedKeptCount).toBe(1);
     expect(result.shuffledCount).toBe(1);
@@ -216,8 +219,8 @@ describe("shuffleTimeline", () => {
       autoSection(3, "hook", 6000, 2000, "hook-01", "hook-01"),
       autoSection(4, "hook", 8000, 2000, "hook-01", "hook-01"),
     ];
-    const a = shuffleTimeline(old, idx, null, seededRng(1));
-    const b = shuffleTimeline(old, idx, null, seededRng(99));
+    const a = shuffleTimeline(old, idx, [], seededRng(1));
+    const b = shuffleTimeline(old, idx, [], seededRng(99));
     const seqA = a.newTimeline.map((s) => s.clips[0]!.clipId).join(",");
     const seqB = b.newTimeline.map((s) => s.clips[0]!.clipId).join(",");
     expect(seqA).not.toBe(seqB);
