@@ -1,7 +1,7 @@
 import { openDB, deleteDB, type IDBPDatabase } from "idb";
 
 const DB_NAME = "vsl-mix-n-match";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export interface FolderRecord {
   id: string;
@@ -30,11 +30,19 @@ export interface FileRecord {
   filename: string;
 }
 
+export interface TalkingHeadLayerRecord {
+  id: string;
+  tag: string;
+  fileId: string;
+  label?: string;
+  createdAt: Date;
+}
+
 export type MediaDB = IDBPDatabase<unknown>;
 
 export async function openMediaDB(): Promise<MediaDB> {
   return openDB(DB_NAME, DB_VERSION, {
-    upgrade(db) {
+    upgrade(db, oldVersion) {
       if (!db.objectStoreNames.contains("folders")) {
         db.createObjectStore("folders", { keyPath: "id" });
       }
@@ -50,6 +58,9 @@ export async function openMediaDB(): Promise<MediaDB> {
       }
       if (!db.objectStoreNames.contains("meta")) {
         db.createObjectStore("meta", { keyPath: "key" });
+      }
+      if (oldVersion < 2 && !db.objectStoreNames.contains("talkingHeadLayers")) {
+        db.createObjectStore("talkingHeadLayers", { keyPath: "id" });
       }
     },
   });
