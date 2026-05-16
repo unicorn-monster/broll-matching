@@ -9,7 +9,6 @@ import { TrackTags } from "./track-tags";
 import { TrackClips } from "./track-clips";
 import { TrackAudio } from "./track-audio";
 import { TrackTextOverlays } from "./track-text-overlays";
-import { TrackTalkingHead } from "./track-talking-head";
 import { OverlayTracks } from "../overlay/overlay-tracks";
 import { useAudioKeyboard } from "../audio/use-audio-keyboard";
 
@@ -107,7 +106,6 @@ export function TimelinePanel() {
         >
           <TimelineRuler totalMs={renderMs} pxPerSecond={effectivePxPerSec} />
           <TrackTextOverlays pxPerSecond={effectivePxPerSec} />
-          <TrackTalkingHead pxPerSecond={effectivePxPerSec} />
           {timeline ? (
             <>
               <TrackTags
