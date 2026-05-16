@@ -5,7 +5,7 @@ const BASE_NAMES = new Set(["hook", "fs-clipper-freakout", "ump-compressthenail"
 
 describe("parseScript — SRT-style", () => {
   it("parses HH:MM:SS,mmm --> HH:MM:SS,mmm cue", () => {
-    const result = parseScript("00:00:01,250 --> 00:00:02,833 || Hook || Intro text", BASE_NAMES);
+    const result = parseScript("00:00:01,250 --> 00:00:02,833 || Intro text || Hook", BASE_NAMES);
     expect(result.errors).toHaveLength(0);
     expect(result.sections).toHaveLength(1);
     expect(result.sections[0]).toMatchObject({
@@ -18,20 +18,20 @@ describe("parseScript — SRT-style", () => {
   });
 
   it("parses MM:SS,mmm shorthand", () => {
-    const result = parseScript("00:01,250 --> 00:02,833 || Hook || text", BASE_NAMES);
+    const result = parseScript("00:01,250 --> 00:02,833 || text || Hook", BASE_NAMES);
     expect(result.errors).toHaveLength(0);
     expect(result.sections).toHaveLength(1);
   });
 
   it("accepts legacy MM:SS (no ms, treated as ,000)", () => {
-    const result = parseScript("00:00 --> 00:04 || Hook || text", BASE_NAMES);
+    const result = parseScript("00:00 --> 00:04 || text || Hook", BASE_NAMES);
     expect(result.errors).toHaveLength(0);
     expect(result.sections[0]!.durationMs).toBe(4000); // frame-aligned: 4s = 120 frames exact
   });
 
   it("snaps start/end to frame boundaries", () => {
     // 1050ms: 1050 * 30 / 1000 = 31.5 → rounds to frame 32 (1066.67ms)
-    const result = parseScript("00:01,000 --> 00:01,050 || Hook || tiny", BASE_NAMES);
+    const result = parseScript("00:01,000 --> 00:01,050 || tiny || Hook", BASE_NAMES);
     const d = result.sections[0]!.durationMs;
     const frameCount = (d * 30) / 1000;
     // duration must land exactly on a frame boundary (integer frame count)
@@ -40,7 +40,7 @@ describe("parseScript — SRT-style", () => {
   });
 
   it("skips blank lines", () => {
-    const result = parseScript("\n00:00 --> 00:04 || Hook || text\n\n", BASE_NAMES);
+    const result = parseScript("\n00:00 --> 00:04 || text || Hook\n\n", BASE_NAMES);
     expect(result.sections).toHaveLength(1);
   });
 
@@ -51,70 +51,70 @@ describe("parseScript — SRT-style", () => {
   });
 
   it("warns on unknown tag (case-insensitive)", () => {
-    const result = parseScript("00:00 --> 00:04 || UnknownTag || text", BASE_NAMES);
+    const result = parseScript("00:00 --> 00:04 || text || UnknownTag", BASE_NAMES);
     expect(result.warnings.some((w) => w.message.includes("UnknownTag"))).toBe(true);
   });
 
   it("matches tags case-insensitively", () => {
-    const result = parseScript("00:00 --> 00:04 || FS-CLIPPER-FREAKOUT || text", BASE_NAMES);
+    const result = parseScript("00:00 --> 00:04 || text || FS-CLIPPER-FREAKOUT", BASE_NAMES);
     expect(result.warnings).toHaveLength(0);
   });
 
   it("warns on zero-duration section", () => {
-    const result = parseScript("00:00,000 --> 00:00,000 || Hook || text", BASE_NAMES);
+    const result = parseScript("00:00,000 --> 00:00,000 || text || Hook", BASE_NAMES);
     expect(result.warnings.some((w) => w.message.includes("zero"))).toBe(true);
   });
 
   it("errors on reversed timestamps (end before start)", () => {
-    const result = parseScript("00:00:05,000 --> 00:00:03,000 || Hook || text", BASE_NAMES);
+    const result = parseScript("00:00:05,000 --> 00:00:03,000 || text || Hook", BASE_NAMES);
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]!.message).toMatch(/end time is before start time/i);
     expect(result.sections).toHaveLength(0);
   });
 
   it("accepts hyphen separator (CapCut variant)", () => {
-    const result = parseScript("00:00:00,000 - 00:00:02,833 ||Hook|| text", BASE_NAMES);
+    const result = parseScript("00:00:00,000 - 00:00:02,833 || text ||Hook", BASE_NAMES);
     expect(result.errors).toHaveLength(0);
     expect(result.sections).toHaveLength(1);
     expect(result.sections[0]!.tag).toBe("Hook");
   });
 
   it("accepts en-dash separator", () => {
-    const result = parseScript("00:00:00,000 \u2013 00:00:02,833 ||Hook|| text", BASE_NAMES);
+    const result = parseScript("00:00:00,000 \u2013 00:00:02,833 || text ||Hook", BASE_NAMES);
     expect(result.errors).toHaveLength(0);
     expect(result.sections).toHaveLength(1);
   });
 
   it("accepts em-dash separator", () => {
-    const result = parseScript("00:00:00,000 \u2014 00:00:02,833 ||Hook|| text", BASE_NAMES);
+    const result = parseScript("00:00:00,000 \u2014 00:00:02,833 || text ||Hook", BASE_NAMES);
     expect(result.errors).toHaveLength(0);
     expect(result.sections).toHaveLength(1);
   });
 
   it("accepts period as decimal separator (HH:MM:SS.mmm)", () => {
-    const result = parseScript("00:00:00.000 - 00:00:02.833 || Hook || text", BASE_NAMES);
+    const result = parseScript("00:00:00.000 - 00:00:02.833 || text || Hook", BASE_NAMES);
     expect(result.errors).toHaveLength(0);
     expect(result.sections).toHaveLength(1);
     expect(result.sections[0]!.tag).toBe("Hook");
   });
 
   it("accepts period decimal separator with --> and produces same duration as comma form", () => {
-    const withPeriod = parseScript("00:00:01.250 --> 00:00:02.833 || Hook || text", BASE_NAMES);
-    const withComma = parseScript("00:00:01,250 --> 00:00:02,833 || Hook || text", BASE_NAMES);
+    const withPeriod = parseScript("00:00:01.250 --> 00:00:02.833 || text || Hook", BASE_NAMES);
+    const withComma = parseScript("00:00:01,250 --> 00:00:02,833 || text || Hook", BASE_NAMES);
     expect(withPeriod.errors).toHaveLength(0);
     expect(withPeriod.sections[0]!.durationMs).toBe(withComma.sections[0]!.durationMs);
   });
 
   it("accepts mixed comma and period decimal separators on same line", () => {
-    const result = parseScript("00:00:01,250 --> 00:00:02.833 || Hook || text", BASE_NAMES);
+    const result = parseScript("00:00:01,250 --> 00:00:02.833 || text || Hook", BASE_NAMES);
     expect(result.errors).toHaveLength(0);
     expect(result.sections).toHaveLength(1);
   });
 
   it("handles multi-line SRT-style script", () => {
     const input = [
-      "00:00:00,000 --> 00:00:04,000 || Hook || Line one",
-      "00:00:04,000 --> 00:00:10,500 || FS-clipper-freakout || Line two",
+      "00:00:00,000 --> 00:00:04,000 || Line one || Hook",
+      "00:00:04,000 --> 00:00:10,500 || Line two || FS-clipper-freakout",
     ].join("\n");
     const result = parseScript(input, BASE_NAMES);
     expect(result.sections).toHaveLength(2);
@@ -125,8 +125,8 @@ describe("parseScript — SRT-style", () => {
 describe("parseScript — overlap detection", () => {
   it("errors when two lines overlap, pointing at the later line", () => {
     const input = [
-      "00:00:01,000 --> 00:00:05,000 || Hook || first",
-      "00:00:03,000 --> 00:00:07,000 || Hook || overlaps first",
+      "00:00:01,000 --> 00:00:05,000 || first || Hook",
+      "00:00:03,000 --> 00:00:07,000 || overlaps first || Hook",
     ].join("\n");
     const result = parseScript(input, BASE_NAMES);
     expect(result.errors).toHaveLength(1);
@@ -136,8 +136,8 @@ describe("parseScript — overlap detection", () => {
 
   it("accepts adjacent lines that touch (curr.startMs === prev.endMs) — no overlap", () => {
     const input = [
-      "00:00:01,000 --> 00:00:05,000 || Hook || first",
-      "00:00:05,000 --> 00:00:07,000 || Hook || touches",
+      "00:00:01,000 --> 00:00:05,000 || first || Hook",
+      "00:00:05,000 --> 00:00:07,000 || touches || Hook",
     ].join("\n");
     const result = parseScript(input, BASE_NAMES);
     expect(result.errors).toHaveLength(0);
@@ -145,8 +145,8 @@ describe("parseScript — overlap detection", () => {
 
   it("accepts lines with a gap between them", () => {
     const input = [
-      "00:00:01,000 --> 00:00:05,000 || Hook || first",
-      "00:00:10,000 --> 00:00:12,000 || Hook || far later",
+      "00:00:01,000 --> 00:00:05,000 || first || Hook",
+      "00:00:10,000 --> 00:00:12,000 || far later || Hook",
     ].join("\n");
     const result = parseScript(input, BASE_NAMES);
     expect(result.errors).toHaveLength(0);
@@ -155,8 +155,8 @@ describe("parseScript — overlap detection", () => {
   it("detects overlap regardless of line order in the script", () => {
     // Second-listed line starts earlier and overlaps the first line.
     const input = [
-      "00:00:05,000 --> 00:00:09,000 || Hook || late line",
-      "00:00:00,000 --> 00:00:06,000 || Hook || early line, overlaps",
+      "00:00:05,000 --> 00:00:09,000 || late line || Hook",
+      "00:00:00,000 --> 00:00:06,000 || early line, overlaps || Hook",
     ].join("\n");
     const result = parseScript(input, BASE_NAMES);
     expect(result.errors.length).toBeGreaterThanOrEqual(1);
@@ -167,7 +167,7 @@ describe("parseScript — overlap detection", () => {
 describe("parseScript — audio bound check", () => {
   it("errors when endTime exceeds audioDurationMs", () => {
     const result = parseScript(
-      "00:00:08,000 --> 00:00:12,000 || Hook || past end",
+      "00:00:08,000 --> 00:00:12,000 || past end || Hook",
       BASE_NAMES,
       10_000, // audio is 10s, line ends at 12s
     );
@@ -178,7 +178,7 @@ describe("parseScript — audio bound check", () => {
 
   it("accepts endTime equal to audioDurationMs (boundary inclusive)", () => {
     const result = parseScript(
-      "00:00:08,000 --> 00:00:10,000 || Hook || ends right at end",
+      "00:00:08,000 --> 00:00:10,000 || ends right at end || Hook",
       BASE_NAMES,
       10_000,
     );
@@ -192,7 +192,7 @@ describe("parseScript — audio bound check", () => {
     // duration, not the frame-snapped derivative — otherwise sub-frame
     // snap drift causes a false positive.
     const result = parseScript(
-      "00:00:00,000 --> 00:05:15,533 || Hook || ends exactly at audio end",
+      "00:00:00,000 --> 00:05:15,533 || ends exactly at audio end || Hook",
       BASE_NAMES,
       315_533,
     );
@@ -201,7 +201,7 @@ describe("parseScript — audio bound check", () => {
 
   it("skips bound check when audioDurationMs is null (audio not loaded yet)", () => {
     const result = parseScript(
-      "00:00:08,000 --> 00:00:120,000 || Hook || would normally fail",
+      "00:00:08,000 --> 00:00:120,000 || would normally fail || Hook",
       BASE_NAMES,
       null,
     );

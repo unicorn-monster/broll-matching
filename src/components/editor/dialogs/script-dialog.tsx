@@ -79,7 +79,7 @@ export function ScriptDialog({ open, onOpenChange }: ScriptDialogProps) {
         <DialogHeader>
           <DialogTitle>Script</DialogTitle>
           <DialogDescription>
-            One line per section: <code>HH:MM:SS,mmm --&gt; HH:MM:SS,mmm || tag || text</code>
+            One line per section: <code>HH:MM:SS,mmm --&gt; HH:MM:SS,mmm || text || tag</code>
           </DialogDescription>
         </DialogHeader>
         <ScriptPaste
