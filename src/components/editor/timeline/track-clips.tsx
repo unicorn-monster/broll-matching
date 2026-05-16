@@ -1,9 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useMediaPool } from "@/state/media-pool";
-import { useBuildState } from "@/components/build/build-state-context";
 import type { MatchedSection } from "@/lib/auto-match";
 
 interface TrackClipsProps {
@@ -14,25 +12,15 @@ interface TrackClipsProps {
 }
 
 export function TrackClips({ timeline, pxPerSecond, selectedIndex, onSelect }: TrackClipsProps) {
-  const { talkingHeadFiles } = useBuildState();
-  // Memoize ObjectURLs for talking-head source files so the thumbnail <video> can
-  // resolve a src — TH files are NOT in the media-pool (they live in BuildState).
-  const [thUrls, setThUrls] = useState<Map<string, string>>(new Map());
-  useEffect(() => {
-    const next = new Map<string, string>();
-    for (const [fileId, file] of talkingHeadFiles) next.set(fileId, URL.createObjectURL(file));
-    setThUrls(next);
-    return () => {
-      for (const url of next.values()) URL.revokeObjectURL(url);
-    };
-  }, [talkingHeadFiles]);
-
   return (
     <div className="relative h-[90px] flex items-stretch bg-muted/10">
       {timeline.map((section, i) => {
+        // TH sections render on their own layer rows (TrackTalkingHeadLayer).
+        // Skip them here so the main b-roll row visually reads as cut.
+        const isTalkingHead = section.clips.some((c) => c.sourceSeekMs !== undefined);
+        if (isTalkingHead) return null;
         const left = (section.startMs / 1000) * pxPerSecond;
         const width = (section.durationMs / 1000) * pxPerSecond;
-        const isTalkingHead = section.clips.some((c) => c.sourceSeekMs !== undefined);
         return (
           <div
             key={i}
@@ -42,7 +30,6 @@ export function TrackClips({ timeline, pxPerSecond, selectedIndex, onSelect }: T
               "absolute top-1 bottom-1 rounded-sm border overflow-hidden flex gap-px cursor-pointer",
               section.userLocked ? "border-blue-500/50" : "border-border/50",
               section.clips.some((c) => c.isPlaceholder) && "border-red-500/40 border-dashed bg-red-500/5",
-              isTalkingHead && "border-purple-500/60 bg-purple-500/5",
               i === selectedIndex && "ring-2 ring-primary ring-offset-1 ring-offset-background",
             )}
             style={{ left: `${left}px`, width: `${Math.max(0, width - 2)}px` }}
@@ -54,7 +41,6 @@ export function TrackClips({ timeline, pxPerSecond, selectedIndex, onSelect }: T
                 <ClipThumb
                   key={j}
                   thumbKey={c.fileId}
-                  thOverrideUrl={thUrls.get(c.fileId)}
                   speedFactor={c.speedFactor}
                   trimDurationMs={c.trimDurationMs}
                   sectionMs={section.durationMs}
@@ -70,20 +56,17 @@ export function TrackClips({ timeline, pxPerSecond, selectedIndex, onSelect }: T
 
 function ClipThumb({
   thumbKey,
-  thOverrideUrl,
   speedFactor,
   trimDurationMs,
   sectionMs,
 }: {
   thumbKey: string;
-  thOverrideUrl?: string | undefined;
   speedFactor: number;
   trimDurationMs?: number | undefined;
   sectionMs: number;
 }) {
   const mediaPool = useMediaPool();
-  // TH layer files live outside the media-pool; if a URL was provided, use it.
-  const src = thOverrideUrl ?? mediaPool.getFileURL(thumbKey);
+  const src = mediaPool.getFileURL(thumbKey);
 
   const isTrim = trimDurationMs != null;
   const tooltip = isTrim

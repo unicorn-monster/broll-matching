@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Trash2, Video, X } from "lucide-react";
 import {
   Dialog,
@@ -16,7 +16,16 @@ interface Props {
   onOpenChange: (v: boolean) => void;
 }
 
-const DEFAULT_NEW_TAG = "talking-head";
+const DEFAULT_NEW_TAG_BASE = "talking-head";
+
+/** Suggests a tag that isn't already used: "talking-head", "talking-head-2", … */
+function suggestNextTag(existing: { tag: string }[]): string {
+  const taken = new Set(existing.map((l) => l.tag));
+  if (!taken.has(DEFAULT_NEW_TAG_BASE)) return DEFAULT_NEW_TAG_BASE;
+  let n = 2;
+  while (taken.has(`${DEFAULT_NEW_TAG_BASE}-${n}`)) n++;
+  return `${DEFAULT_NEW_TAG_BASE}-${n}`;
+}
 
 export function TalkingHeadLayersDialog({ open, onOpenChange }: Props) {
   const {
@@ -25,13 +34,23 @@ export function TalkingHeadLayersDialog({ open, onOpenChange }: Props) {
     removeTalkingHeadLayer,
     renameTalkingHeadLayer,
   } = useBuildState();
-  const [tag, setTag] = useState(DEFAULT_NEW_TAG);
+  const [tag, setTag] = useState(() => suggestNextTag(talkingHeadLayers));
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
+  // Re-suggest a unique default whenever the dialog opens, so the user can chain adds.
+  useEffect(() => {
+    if (open) {
+      setTag(suggestNextTag(talkingHeadLayers));
+      setFile(null);
+      setError(null);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }, [open, talkingHeadLayers.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
   function reset() {
-    setTag(DEFAULT_NEW_TAG);
+    setTag(suggestNextTag(talkingHeadLayers));
     setFile(null);
     setError(null);
     if (fileRef.current) fileRef.current.value = "";

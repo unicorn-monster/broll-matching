@@ -29,10 +29,9 @@ export function TrackTags({ timeline, pxPerSecond, selectedIndex, onSelect, onTo
             className={cn(
               "absolute top-1 bottom-1 rounded-sm border text-[10px] font-medium flex items-center transition overflow-hidden",
               isMissing && "bg-red-500/10 border-red-500/40 border-dashed text-red-300",
-              !isMissing && isTalkingHead && "bg-purple-500/20 border-purple-500/60 text-purple-200",
-              !isMissing && !isTalkingHead && s.userLocked && "bg-blue-500/15 border-blue-500/50 text-blue-200",
-              !isMissing && !isTalkingHead && !s.userLocked && isHighSpeed && "bg-yellow-500/15 border-yellow-500/50 text-yellow-200",
-              !isMissing && !isTalkingHead && !s.userLocked && !isHighSpeed && "bg-primary/15 border-primary/40 text-primary",
+              !isMissing && s.userLocked && "bg-blue-500/15 border-blue-500/50 text-blue-200",
+              !isMissing && !s.userLocked && isHighSpeed && "bg-yellow-500/15 border-yellow-500/50 text-yellow-200",
+              !isMissing && !s.userLocked && !isHighSpeed && "bg-primary/15 border-primary/40 text-primary",
               i === selectedIndex && "ring-2 ring-primary ring-offset-1 ring-offset-background",
             )}
             style={{ left: `${left}px`, width: `${Math.max(0, width - 2)}px` }}
