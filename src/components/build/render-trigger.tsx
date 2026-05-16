@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { useMediaPool } from "@/state/media-pool";
 import { OutputSizeSelect, type OutputSize, isValidSize } from "@/components/render/output-size-select";
 import type { MatchedSection } from "@/lib/auto-match";
-import { TALKING_HEAD_FILE_ID } from "@/lib/auto-match";
 import { useBuildState } from "@/components/build/build-state-context";
 import { renderTextOverlayToPNGBytes } from "@/lib/text-overlay/text-overlay-render";
 import type { TextOverlay } from "@/lib/overlay/overlay-types";
@@ -26,7 +25,7 @@ export function RenderTrigger({ audioFile, audioDurationMs, timeline, includeCap
   const startedAtRef = useRef<number | null>(null);
   const xhrRef = useRef<XMLHttpRequest | null>(null);
   const mediaPool = useMediaPool();
-  const { talkingHeadFile, overlays } = useBuildState();
+  const { talkingHeadLayers, talkingHeadFiles, overlays } = useBuildState();
   const [outputSize, setOutputSize] = useState<OutputSize>({ width: 1080, height: 1350 });
 
   useEffect(() => {
@@ -73,8 +72,12 @@ export function RenderTrigger({ audioFile, audioDurationMs, timeline, includeCap
         if (file) fd.append("clips", new File([file], fileId));
       }
 
-      if (talkingHeadFile && usedFileIds.has(TALKING_HEAD_FILE_ID)) {
-        fd.append("clips", new File([talkingHeadFile], TALKING_HEAD_FILE_ID));
+      // Append every talking-head layer file used by the timeline. Each layer has its
+      // own fileId (prefixed `__th_layer__`) so the server keys clips back to the right MP4.
+      for (const layer of talkingHeadLayers) {
+        if (!usedFileIds.has(layer.fileId)) continue;
+        const file = talkingHeadFiles.get(layer.fileId);
+        if (file) fd.append("clips", new File([file], layer.fileId));
       }
 
       // Caption payload: PNG per visible text overlay + JSON metadata (timing + pixel position).

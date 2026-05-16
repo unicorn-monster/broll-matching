@@ -104,7 +104,7 @@ export function ScriptPaste({ text, onTextChange, availableBaseNames, audioDurat
         wrap="soft"
         style={{ wordBreak: "break-all", overflowWrap: "anywhere", maxWidth: "100%" }}
         className="block w-full h-64 font-mono text-xs border border-border rounded-lg p-3 bg-background resize-y focus:outline-none focus:ring-1 focus:ring-primary"
-        placeholder={"00:00:01,250 --> 00:00:02,833 || hook || Script text here\n00:00:02,833 --> 00:00:12,000 || fs-clipper-freakout || More script"}
+        placeholder={"00:00:01,250 --> 00:00:02,833 || Script text here || hook\n00:00:02,833 --> 00:00:12,000 || More script || fs-clipper-freakout"}
       />
 
       {lineStatuses && (

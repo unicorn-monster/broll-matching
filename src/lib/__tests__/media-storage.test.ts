@@ -47,7 +47,7 @@ describe("media-storage", () => {
   it("opens database with all required object stores", async () => {
     const db = await openMediaDB();
     const names = Array.from(db.objectStoreNames).sort();
-    expect(names).toEqual(["audio", "clips", "files", "folders", "meta"]);
+    expect(names).toEqual(["audio", "clips", "files", "folders", "meta", "talkingHeadLayers"]);
     db.close();
   });
 });

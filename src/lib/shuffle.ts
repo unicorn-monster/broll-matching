@@ -2,12 +2,11 @@ import {
   createMatchState,
   markUsed,
   matchSections,
-  TALKING_HEAD_FILE_ID,
   type ClipMetadata,
   type MatchedSection,
-  type TalkingHeadConfig,
 } from "./auto-match";
 import type { ParsedSection } from "./script-parser";
+import { isLayerFileId, type TalkingHeadLayer } from "@/lib/talking-head/talking-head-types";
 
 export interface ShuffleResult {
   newTimeline: MatchedSection[];
@@ -22,12 +21,12 @@ export interface ShuffleResult {
 }
 
 /**
- * Detects a talking-head section by the synthetic TALKING_HEAD_FILE_ID.
- * Strict identity check — robust against future B-roll features that might
- * also set `sourceSeekMs` on non-TH clips.
+ * Detects a talking-head section by the per-layer synthetic fileId prefix
+ * (`__th_layer__`). Multi-layer aware — any layer-derived clip triggers the
+ * preserve branch, never the re-roll branch.
  */
 function isTalkingHeadSection(section: MatchedSection): boolean {
-  return section.clips.some((c) => c.fileId === TALKING_HEAD_FILE_ID);
+  return section.clips.some((c) => isLayerFileId(c.fileId));
 }
 
 /**
@@ -43,7 +42,7 @@ function isTalkingHeadSection(section: MatchedSection): boolean {
 export function shuffleTimeline(
   oldTimeline: MatchedSection[],
   clipsByBaseName: Map<string, ClipMetadata[]>,
-  talkingHead?: TalkingHeadConfig | null,
+  talkingHeadLayers: TalkingHeadLayer[] = [],
   rng: () => number = Math.random,
 ): ShuffleResult {
   const state = createMatchState(rng, "varied");
@@ -78,7 +77,7 @@ export function shuffleTimeline(
       endTime: section.endMs / 1000,
       durationMs: section.durationMs,
     };
-    const matched = matchSections([ps], clipsByBaseName, state, talkingHead ?? undefined)[0]!;
+    const matched = matchSections([ps], clipsByBaseName, state, talkingHeadLayers)[0]!;
     matched.sectionIndex = section.sectionIndex;
     newTimeline.push(matched);
 

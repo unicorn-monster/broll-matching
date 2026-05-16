@@ -5,12 +5,18 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { MutableRefObject } from "react";
 import { toast } from "sonner";
 import type { MatchedSection } from "@/lib/auto-match";
-import { buildClipsByBaseName, TALKING_HEAD_FILE_ID } from "@/lib/auto-match";
+import { buildClipsByBaseName } from "@/lib/auto-match";
 import { preserveLocks } from "@/lib/lock-preserve";
 import type { ParsedSection } from "@/lib/script-parser";
 import type { OverlayItem } from "@/lib/overlay/overlay-types";
 import { shuffleTimeline as shuffleTimelineHelper, type ShuffleResult } from "@/lib/shuffle";
 import { useMediaPool } from "@/state/media-pool";
+import type { TalkingHeadLayer } from "@/lib/talking-head/talking-head-types";
+import {
+  addLayer as addLayerPure,
+  removeLayer as removeLayerPure,
+  renameLayer as renameLayerPure,
+} from "@/lib/talking-head/talking-head-store";
 
 interface BuildState {
   // Project inputs
@@ -36,8 +42,6 @@ interface BuildState {
   setAudioDialogOpen: (open: boolean) => void;
   scriptDialogOpen: boolean;
   setScriptDialogOpen: (open: boolean) => void;
-  talkingHeadDialogOpen: boolean;
-  setTalkingHeadDialogOpen: (open: boolean) => void;
   exportDialogOpen: boolean;
   setExportDialogOpen: (open: boolean) => void;
 
@@ -53,10 +57,12 @@ interface BuildState {
   textOverlayApplyAll: boolean;
   setTextOverlayApplyAll: (v: boolean) => void;
 
-  talkingHeadFile: File | null;
-  talkingHeadTag: string;
-  setTalkingHead: (file: File | null) => void;
-  setTalkingHeadTag: (tag: string) => void;
+  // Talking-head layers (multi-layer model)
+  talkingHeadLayers: TalkingHeadLayer[];
+  talkingHeadFiles: Map<string, File>;
+  addTalkingHeadLayer: (args: { tag: string; file: File; label?: string }) => { ok: boolean; reason?: string };
+  removeTalkingHeadLayer: (id: string) => void;
+  renameTalkingHeadLayer: (id: string, newTag: string) => { ok: boolean; reason?: string };
 
   // Derived
   inspectorMode: "section" | "overlay" | "audio" | "empty";
@@ -96,7 +102,6 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
   const [playheadMs, setPlayheadMs] = useState(0);
   const [audioDialogOpen, setAudioDialogOpen] = useState(false);
   const [scriptDialogOpen, setScriptDialogOpen] = useState(false);
-  const [talkingHeadDialogOpen, setTalkingHeadDialogOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [previewClipKey, setPreviewClipKey] = useState<string | null>(null);
 
@@ -104,16 +109,45 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
   const playerSeekRef = useRef<((ms: number) => void) | null>(null);
   const playerTogglePlayRef = useRef<(() => void) | null>(null);
 
-  const [talkingHeadFile, setTalkingHeadFileState] = useState<File | null>(null);
-  const [talkingHeadTag, setTalkingHeadTagState] = useState<string>("talking-head");
+  const [talkingHeadLayers, setTalkingHeadLayers] = useState<TalkingHeadLayer[]>([]);
+  const [talkingHeadFiles, setTalkingHeadFiles] = useState<Map<string, File>>(new Map());
 
-  const setTalkingHead = useCallback((file: File | null) => {
-    setTalkingHeadFileState(file);
-  }, []);
-  const setTalkingHeadTag = useCallback((tag: string) => {
-    // Always store lowercase — match logic compares `section.tag.toLowerCase()` to this value.
-    setTalkingHeadTagState(tag.trim().toLowerCase());
-  }, []);
+  // Talking-head layers are session-only (in-memory) — no IndexedDB persistence by design.
+  // User re-adds via the modal after every reload.
+  const addTalkingHeadLayer = useCallback(
+    (args: { tag: string; file: File; label?: string }) => {
+      const result = addLayerPure(talkingHeadLayers, args, talkingHeadFiles);
+      if (!result.ok) return { ok: false, reason: result.reason };
+      setTalkingHeadLayers(result.layers);
+      setTalkingHeadFiles(result.files);
+      return { ok: true };
+    },
+    [talkingHeadLayers, talkingHeadFiles],
+  );
+
+  const removeTalkingHeadLayer = useCallback(
+    (id: string) => {
+      const layer = talkingHeadLayers.find((l) => l.id === id);
+      if (!layer) return;
+      setTalkingHeadLayers((prev) => removeLayerPure(prev, id));
+      setTalkingHeadFiles((prev) => {
+        const next = new Map(prev);
+        next.delete(layer.fileId);
+        return next;
+      });
+    },
+    [talkingHeadLayers],
+  );
+
+  const renameTalkingHeadLayer = useCallback(
+    (id: string, newTag: string) => {
+      const result = renameLayerPure(talkingHeadLayers, id, newTag);
+      if (!result.ok) return { ok: false, reason: result.reason };
+      setTalkingHeadLayers(result.layers);
+      return { ok: true };
+    },
+    [talkingHeadLayers],
+  );
 
   const [overlays, setOverlaysState] = useState<OverlayItem[]>([]);
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
@@ -166,16 +200,13 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
     [],
   );
 
-  // Re-match deterministically when talking-head config changes. Uses preserveLocks so
+  // Re-match deterministically when talking-head layers change. Uses preserveLocks so
   // any user-locked B-roll sections survive. Talking-head sections themselves never carry
   // locks because re-roll/swap controls are hidden for them.
   useEffect(() => {
     if (!sections || !timeline) return;
     const clipsByBaseName = buildClipsByBaseName(mediaPoolClips);
-    const thConfig = talkingHeadFile && talkingHeadTag.length > 0
-      ? { fileId: TALKING_HEAD_FILE_ID, tag: talkingHeadTag }
-      : null;
-    const result = preserveLocks(timeline, sections, clipsByBaseName, thConfig);
+    const result = preserveLocks(timeline, sections, clipsByBaseName, talkingHeadLayers);
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setTimeline(result.newTimeline);
     if (result.droppedCount > 0) {
@@ -186,7 +217,7 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
     //   before any TH config edit; including them would cause infinite re-fire loops.
     // - mediaPoolClips: B-roll changes are handled by onParsed, not this effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [talkingHeadFile, talkingHeadTag]);
+  }, [talkingHeadLayers]);
 
   function setAudio(file: File | null, duration: number | null) {
     setAudioFile(file);
@@ -196,15 +227,12 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
   const shuffleTimeline = useCallback(() => {
     if (!timeline) return;
     const clipsByBaseName = buildClipsByBaseName(mediaPoolClips);
-    const thConfig = talkingHeadFile && talkingHeadTag.length > 0
-      ? { fileId: TALKING_HEAD_FILE_ID, tag: talkingHeadTag }
-      : null;
-    const result = shuffleTimelineHelper(timeline, clipsByBaseName, thConfig);
+    const result = shuffleTimelineHelper(timeline, clipsByBaseName, talkingHeadLayers);
     setIsPlaying(false);
     setTimeline(result.newTimeline);
     setPreviewClipKey(null);
     toast.success(buildShuffleToast(result));
-  }, [timeline, mediaPoolClips, talkingHeadFile, talkingHeadTag]);
+  }, [timeline, mediaPoolClips, talkingHeadLayers]);
 
   const toggleSectionLock = useCallback((index: number) => {
     setTimeline((prev) => {
@@ -247,10 +275,11 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
       audioFile,
       audioDuration,
       setAudio,
-      talkingHeadFile,
-      talkingHeadTag,
-      setTalkingHead,
-      setTalkingHeadTag,
+      talkingHeadLayers,
+      talkingHeadFiles,
+      addTalkingHeadLayer,
+      removeTalkingHeadLayer,
+      renameTalkingHeadLayer,
       scriptText,
       setScriptText,
       sections,
@@ -268,8 +297,6 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
       setAudioDialogOpen,
       scriptDialogOpen,
       setScriptDialogOpen,
-      talkingHeadDialogOpen,
-      setTalkingHeadDialogOpen,
       exportDialogOpen,
       setExportDialogOpen,
       previewClipKey,
@@ -294,10 +321,11 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
   }, [
     audioFile,
     audioDuration,
-    talkingHeadFile,
-    talkingHeadTag,
-    setTalkingHead,
-    setTalkingHeadTag,
+    talkingHeadLayers,
+    talkingHeadFiles,
+    addTalkingHeadLayer,
+    removeTalkingHeadLayer,
+    renameTalkingHeadLayer,
     scriptText,
     sections,
     timeline,
@@ -307,7 +335,6 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
     playheadMs,
     audioDialogOpen,
     scriptDialogOpen,
-    talkingHeadDialogOpen,
     exportDialogOpen,
     previewClipKey,
     isPlaying,

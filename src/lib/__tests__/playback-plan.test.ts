@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { buildSectionPlaybackPlan, buildFullTimelinePlaybackPlan, findClipAtMs, findSectionAtMs, clipIdentityKey } from "../playback-plan";
-import { TALKING_HEAD_FILE_ID, type MatchedSection } from "../auto-match";
+import type { MatchedSection } from "../auto-match";
+
+// Layer-prefixed synthetic id matches `isLayerFileId` in shuffle. Plain string
+// avoids dragging in the talking-head-types module purely for this constant.
+const TH_LAYER_FILE_ID = "__th_layer__test";
 
 const seg = (
   _durationMs: number,
@@ -218,7 +222,7 @@ describe("playback-plan — sourceSeekMs propagation", () => {
     durationMs: 1000,
     clips: [{
       clipId: "talking-head",
-      fileId: TALKING_HEAD_FILE_ID,
+      fileId: TH_LAYER_FILE_ID,
       speedFactor: 1,
       trimDurationMs: 1000,
       sourceSeekMs: 5000,
@@ -228,13 +232,13 @@ describe("playback-plan — sourceSeekMs propagation", () => {
   }];
 
   it("buildSectionPlaybackPlan carries sourceSeekMs through", () => {
-    const urls = new Map([[TALKING_HEAD_FILE_ID, "blob:fake"]]);
+    const urls = new Map([[TH_LAYER_FILE_ID, "blob:fake"]]);
     const plan = buildSectionPlaybackPlan(timeline, 0, "blob:audio", urls);
     expect(plan.clips[0]!.sourceSeekMs).toBe(5000);
   });
 
   it("buildFullTimelinePlaybackPlan carries sourceSeekMs through", () => {
-    const urls = new Map([[TALKING_HEAD_FILE_ID, "blob:fake"]]);
+    const urls = new Map([[TH_LAYER_FILE_ID, "blob:fake"]]);
     const plan = buildFullTimelinePlaybackPlan(timeline, "blob:audio", urls);
     expect(plan.clips[0]!.sourceSeekMs).toBe(5000);
   });

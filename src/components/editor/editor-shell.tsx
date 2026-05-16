@@ -8,14 +8,13 @@ import { useMediaPool } from "@/state/media-pool";
 import { DeleteFolderDialog } from "@/components/broll/delete-folder-dialog";
 import { AudioPill } from "./toolbar/audio-pill";
 import { ScriptPill } from "./toolbar/script-pill";
-import { TalkingHeadPill } from "./toolbar/talking-head-pill";
+import { TalkingHeadLayersButton } from "./toolbar/talking-head-layers-button";
 import { ExportButton } from "./toolbar/export-button";
 import { ShuffleButton } from "./toolbar/shuffle-button";
 import { GenerateCaptionsButton } from "./toolbar/generate-captions-button";
 import { AddTextButton } from "./toolbar/add-text-button";
 import { AudioDialog } from "./dialogs/audio-dialog";
 import { ScriptDialog } from "./dialogs/script-dialog";
-import { TalkingHeadDialog } from "./dialogs/talking-head-dialog";
 import { ExportDialog } from "./dialogs/export-dialog";
 import { LibraryPanel } from "./library/library-panel";
 import { TimelinePanel } from "./timeline/timeline-panel";
@@ -24,8 +23,7 @@ import { OverlayDragProvider } from "./overlay/overlay-drag-context";
 import { OverlayInspector } from "./overlay/overlay-inspector";
 import { TextOverlayInspector } from "./overlay/text-overlay-inspector";
 import { AudioInspector } from "./audio/audio-inspector";
-import { Button } from "@/components/ui/button";
-import { formatMs } from "@/lib/format-time";
+import { TalkingHeadSectionInspector } from "./inspector/talking-head-section-inspector";
 import { preloadTextOverlayFonts } from "@/lib/text-overlay/font-loader";
 
 export function EditorShell() {
@@ -34,8 +32,6 @@ export function EditorShell() {
     setAudioDialogOpen,
     scriptDialogOpen,
     setScriptDialogOpen,
-    talkingHeadDialogOpen,
-    setTalkingHeadDialogOpen,
     exportDialogOpen,
     setExportDialogOpen,
     previewClipKey,
@@ -79,7 +75,7 @@ export function EditorShell() {
       className="grid h-[calc(100vh-4rem)] w-full bg-background text-foreground"
       style={{
         gridTemplateColumns: "1fr 1fr 1fr",
-        gridTemplateRows: "48px 6fr 4fr",
+        gridTemplateRows: "48px 1fr 1fr",
       }}
     >
       <div className="col-span-3 row-start-1 flex items-center gap-3 px-3 border-b border-border bg-muted/30 text-sm">
@@ -99,7 +95,7 @@ export function EditorShell() {
         <div className="flex items-center gap-2">
           <AudioPill />
           <ScriptPill />
-          <TalkingHeadPill />
+          <TalkingHeadLayersButton />
         </div>
         <div className="ml-auto flex items-center gap-2">
           <GenerateCaptionsButton />
@@ -130,23 +126,10 @@ export function EditorShell() {
             selectedSection.clips.some((c) => c.sourceSeekMs !== undefined);
 
           return inspectorMode === "section" && isTalkingHeadSection && selectedSection ? (
-            <div className="h-full p-4 space-y-3">
-              <div className="rounded-md border border-purple-500/40 bg-purple-500/5 p-3 space-y-2">
-                <div className="text-xs font-semibold text-purple-300">Talking-head slice</div>
-                <div className="text-xs text-muted-foreground tabular-nums">
-                  {formatMs(selectedSection.startMs)} → {formatMs(selectedSection.endMs)}
-                  {" "}({(selectedSection.durationMs / 1000).toFixed(2)}s)
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  // eslint-disable-next-line react-hooks/refs
-                  onClick={() => playerSeekRef.current?.(selectedSection.startMs)}
-                >
-                  Preview slice
-                </Button>
-              </div>
-            </div>
+            <TalkingHeadSectionInspector
+              selectedSection={selectedSection}
+              playerSeekRef={playerSeekRef}
+            />
           ) : (
             <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
               Coming soon
@@ -160,7 +143,6 @@ export function EditorShell() {
 
       <AudioDialog open={audioDialogOpen} onOpenChange={setAudioDialogOpen} />
       <ScriptDialog open={scriptDialogOpen} onOpenChange={setScriptDialogOpen} />
-      <TalkingHeadDialog open={talkingHeadDialogOpen} onOpenChange={setTalkingHeadDialogOpen} />
       <ExportDialog open={exportDialogOpen} onOpenChange={setExportDialogOpen} />
 
       {clearAllOpen ? (() => {

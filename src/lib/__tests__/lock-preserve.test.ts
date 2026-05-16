@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { preserveLocks } from "../lock-preserve";
-import { TALKING_HEAD_FILE_ID } from "../auto-match";
 import type { MatchedSection, ClipMetadata } from "../auto-match";
 import type { ParsedSection } from "../script-parser";
+import type { TalkingHeadLayer } from "@/lib/talking-head/talking-head-types";
+
+const TH_LAYER_FILE_ID = "__th_layer__ugc";
 
 const makeClip = (id: string, brollName: string, durationMs: number): ClipMetadata => ({
   id,
@@ -218,14 +220,17 @@ describe("preserveLocks — talking-head config", () => {
         durationMs: 1000,
       },
     ];
+    const layers: TalkingHeadLayer[] = [
+      { id: "ugc", tag: "ugc-head", fileId: TH_LAYER_FILE_ID },
+    ];
     const result = preserveLocks(
       oldTimeline,
       newSections,
       new Map<string, ClipMetadata[]>(),
-      { fileId: TALKING_HEAD_FILE_ID, tag: "ugc-head" },
+      layers,
     );
     expect(result.newTimeline[0]!.clips[0]!.sourceSeekMs).toBe(5000);
-    expect(result.newTimeline[0]!.clips[0]!.fileId).toBe(TALKING_HEAD_FILE_ID);
+    expect(result.newTimeline[0]!.clips[0]!.fileId).toBe(TH_LAYER_FILE_ID);
   });
 });
 
