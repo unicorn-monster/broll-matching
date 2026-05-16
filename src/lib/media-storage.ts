@@ -147,13 +147,17 @@ export async function renameFolder(id: string, name: string): Promise<void> {
 
 export async function resetAll(): Promise<void> {
   const db = await openMediaDB();
-  const tx = db.transaction(["folders", "clips", "files", "audio", "meta"], "readwrite");
+  const tx = db.transaction(
+    ["folders", "clips", "files", "audio", "meta", "talkingHeadLayers"],
+    "readwrite",
+  );
   await Promise.all([
     tx.objectStore("folders").clear(),
     tx.objectStore("clips").clear(),
     tx.objectStore("files").clear(),
     tx.objectStore("audio").clear(),
     tx.objectStore("meta").clear(),
+    tx.objectStore("talkingHeadLayers").clear(),
     tx.done,
   ]);
   db.close();

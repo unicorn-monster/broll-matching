@@ -13,6 +13,11 @@ export type StoreOk = { ok: true; layers: TalkingHeadLayer[]; files: Map<string,
 export type StoreErr = { ok: false; reason: "duplicate-tag" | "empty-tag" | "not-found" };
 export type StoreResult = StoreOk | StoreErr;
 
+/** Rename does not touch the files Map; the return shape omits it so callers cannot
+ *  accidentally clobber their in-memory file mirror. */
+export type RenameOk = { ok: true; layers: TalkingHeadLayer[] };
+export type RenameResult = RenameOk | StoreErr;
+
 export function addLayer(
   layers: TalkingHeadLayer[],
   args: { tag: string; file: File; label?: string },
@@ -37,7 +42,7 @@ export function renameLayer(
   layers: TalkingHeadLayer[],
   id: string,
   newTag: string,
-): StoreResult {
+): RenameResult {
   const tag = normalize(newTag);
   if (tag.length === 0) return { ok: false, reason: "empty-tag" };
   const target = layers.find((l) => l.id === id);
@@ -46,7 +51,6 @@ export function renameLayer(
   return {
     ok: true,
     layers: layers.map((l) => (l.id === id ? { ...l, tag } : l)),
-    files: new Map(),
   };
 }
 
