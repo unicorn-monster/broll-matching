@@ -29,8 +29,13 @@ export function TalkingHeadSectionInspector({ selectedSection, playerSeekRef }: 
 
   function commitRename() {
     if (!layer) return;
-    if (draftTag.trim() === layer.tag) {
+    const trimmed = draftTag.trim();
+    if (trimmed === layer.tag) {
       setEditing(false);
+      return;
+    }
+    if (trimmed.length === 0) {
+      setError("Tag cannot be empty.");
       return;
     }
     const result = renameTalkingHeadLayer(layer.id, draftTag);

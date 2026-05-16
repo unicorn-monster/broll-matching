@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { Trash2, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useBuildState } from "@/components/build/build-state-context";
@@ -98,16 +98,19 @@ export function TrackTalkingHeadLayers({ pxPerSecond }: { pxPerSecond: number })
     removeTalkingHeadLayer,
   } = useBuildState();
 
-  // ObjectURLs for each layer's MP4 — keyed by fileId, rebuilt when the files Map changes.
-  const [thUrls, setThUrls] = useState<Map<string, string>>(new Map());
-  useEffect(() => {
-    const next = new Map<string, string>();
-    for (const [fileId, file] of talkingHeadFiles) next.set(fileId, URL.createObjectURL(file));
-    setThUrls(next);
-    return () => {
-      for (const url of next.values()) URL.revokeObjectURL(url);
-    };
+  // ObjectURLs for each layer's MP4 — keyed by fileId. Built via useMemo (so no extra
+  // render churn from setState-in-effect) and revoked by a sibling cleanup effect when
+  // the map identity changes.
+  const thUrls = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const [fileId, file] of talkingHeadFiles) m.set(fileId, URL.createObjectURL(file));
+    return m;
   }, [talkingHeadFiles]);
+  useEffect(() => {
+    return () => {
+      for (const url of thUrls.values()) URL.revokeObjectURL(url);
+    };
+  }, [thUrls]);
 
   if (talkingHeadLayers.length === 0) return null;
 
