@@ -22,17 +22,25 @@ export function MattingProgressModal({ onClose }: { onClose: () => void }) {
   // user reopens the modal); this is wall-clock-elapsed, not job-elapsed, which is
   // good enough for a coarse "~N phút" estimate.
   const [startedAt] = useState(() => Date.now());
+  // Tick `now` every second so ETA recomputes without calling Date.now() in render
+  // (which the linter flags as impure). Cleared on unmount.
+  const [now, setNow] = useState(() => Date.now());
 
   // Auto-close when matting transitions out of `processing` (done/failed/aborted).
   useEffect(() => {
     if (!layer || layer.mattingStatus !== "processing") onClose();
   }, [layer, onClose]);
 
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
   if (!layer || layer.mattingStatus !== "processing") return null;
 
   const p = layer.mattingProgress ?? { framesDone: 0, totalFrames: 1 };
   const pct = Math.round((p.framesDone / Math.max(p.totalFrames, 1)) * 100);
-  const elapsedSec = (Date.now() - startedAt) / 1000;
+  const elapsedSec = (now - startedAt) / 1000;
   const etaSec =
     p.framesDone > 0
       ? Math.round((elapsedSec * (p.totalFrames - p.framesDone)) / p.framesDone)
