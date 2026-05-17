@@ -152,6 +152,26 @@ async function handleInit(msg: Extract<Inbound, { type: "init" }>): Promise<void
     runningMode: "VIDEO",
   });
 
+  // Probe VP9 alpha support up-front and fail fast with a clear message if the
+  // browser can't encode alpha. Real Chrome on desktop ≥94 supports this; some
+  // Electron-based browsers (e.g. the Claude Preview tool, older Edge variants)
+  // do NOT. Without this guard, encoder.configure() succeeds but the first
+  // encode() throws "Cannot call 'encode' on a closed codec" with no hint why.
+  const encoderConfig: VideoEncoderConfig = {
+    codec: "vp09.00.10.08",
+    width,
+    height,
+    bitrate: 4_000_000,
+    framerate: fps,
+    alpha: "keep",
+  };
+  const support = await VideoEncoder.isConfigSupported(encoderConfig);
+  if (!support.supported) {
+    throw new Error(
+      "Trình duyệt này không hỗ trợ encode VP9 alpha. Hãy mở app trong Chrome desktop ≥ 94 (Chrome.app trên macOS, không phải Claude Preview / Electron / Safari / Firefox).",
+    );
+  }
+
   const muxer = new Muxer({
     target: new ArrayBufferTarget(),
     video: {
@@ -174,14 +194,7 @@ async function handleInit(msg: Extract<Inbound, { type: "init" }>): Promise<void
       errorRef.current = e;
     },
   });
-  encoder.configure({
-    codec: "vp09.00.10.08",
-    width,
-    height,
-    bitrate: 4_000_000,
-    framerate: fps,
-    alpha: "keep",
-  });
+  encoder.configure(encoderConfig);
 
   const canvas = new OffscreenCanvas(width, height);
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
