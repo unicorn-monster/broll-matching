@@ -221,7 +221,7 @@ describe("preserveLocks — talking-head config", () => {
       },
     ];
     const layers: TalkingHeadLayer[] = [
-      { id: "ugc", tag: "ugc-head", fileId: TH_LAYER_FILE_ID },
+      { id: "ugc", tag: "ugc-head", fileId: TH_LAYER_FILE_ID, kind: "full" },
     ];
     const result = preserveLocks(
       oldTimeline,

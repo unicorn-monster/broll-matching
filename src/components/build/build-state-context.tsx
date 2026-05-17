@@ -224,7 +224,13 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     if (!sections || !timeline) return;
     const clipsByBaseName = buildClipsByBaseName(mediaPoolClips);
-    const result = preserveLocks(timeline, sections, clipsByBaseName, talkingHeadLayers);
+    const result = preserveLocks(
+      timeline,
+      sections,
+      clipsByBaseName,
+      talkingHeadLayers,
+      disabledOverlayShots,
+    );
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setTimeline(result.newTimeline);
     if (result.droppedCount > 0) {

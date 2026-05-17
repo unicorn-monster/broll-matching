@@ -8,10 +8,19 @@ import {
 } from "../auto-match";
 import type { ClipMetadata } from "../auto-match";
 import type { ParsedSection } from "../script-parser";
-import type { TalkingHeadLayer } from "@/lib/talking-head/talking-head-types";
+import {
+  FULL_LAYER_TAG,
+  OVERLAY_LAYER_TAG,
+  type TalkingHeadLayer,
+} from "@/lib/talking-head/talking-head-types";
 
 const TH_LAYER_FILE_ID = "__th_layer__ugc";
-const thLayer: TalkingHeadLayer = { id: "ugc", tag: "ugc-head", fileId: TH_LAYER_FILE_ID };
+const thLayer: TalkingHeadLayer = {
+  id: "ugc",
+  tag: "ugc-head",
+  fileId: TH_LAYER_FILE_ID,
+  kind: "full",
+};
 
 const makeClip = (brollName: string, durationMs: number) => ({
   id: brollName,
@@ -560,8 +569,8 @@ describe("matchSections — talking-head branch", () => {
 });
 
 describe("matchSections — multi talking-head layers", () => {
-  const layerA: TalkingHeadLayer = { id: "a", tag: "doctor", fileId: "__th_layer__a" };
-  const layerB: TalkingHeadLayer = { id: "b", tag: "expert", fileId: "__th_layer__b" };
+  const layerA: TalkingHeadLayer = { id: "a", tag: "doctor", fileId: "__th_layer__a", kind: "full" };
+  const layerB: TalkingHeadLayer = { id: "b", tag: "expert", fileId: "__th_layer__b", kind: "full" };
 
   it("routes a section to the matching TH layer (by tag, case-insensitive)", () => {
     const sections: ParsedSection[] = [
@@ -593,5 +602,89 @@ describe("matchSections — multi talking-head layers", () => {
     const matched = matchSections(sections, new Map(), undefined, [layerA, layerB]);
     expect(matched[0]!.clips[0]!.fileId).toBe(layerA.fileId);
     expect(matched[1]!.clips[0]!.fileId).toBe(layerB.fileId);
+  });
+});
+
+describe("matchSections — overlay", () => {
+  function fakeFullLayer(): TalkingHeadLayer {
+    return { id: "full-1", tag: FULL_LAYER_TAG, fileId: "f-full", kind: "full" };
+  }
+  function fakeOverlayLayer(
+    opts: { status?: "processing" | "ready"; mattedFileId?: string } = {},
+  ): TalkingHeadLayer {
+    return {
+      id: "ov-1",
+      tag: OVERLAY_LAYER_TAG,
+      fileId: "f-overlay",
+      kind: "overlay",
+      mattingStatus: opts.status ?? "ready",
+      ...(opts.mattedFileId ? { mattedFileId: opts.mattedFileId } : { mattedFileId: "matted-ov-1" }),
+    };
+  }
+
+  const noClips = new Map();
+
+  it("emits overlayClip when section has overlay tag and overlay layer is ready", () => {
+    const sections: ParsedSection[] = [{
+      lineNumber: 1, startTime: 30, endTime: 45,
+      tags: ["mower", OVERLAY_LAYER_TAG], scriptText: "x", durationMs: 15000,
+    }];
+    const out = matchSections(sections, noClips, undefined, [fakeOverlayLayer()], new Set());
+    expect(out[0]!.overlayClip).toBeDefined();
+    expect(out[0]!.overlayClip!.sourceSeekMs).toBe(30000);
+    expect(out[0]!.overlayClip!.fileId).toBe("matted-ov-1");
+    expect(out[0]!.overlayClip!.isOverlay).toBe(true);
+  });
+
+  it("warns and omits overlayClip when overlay layer is processing", () => {
+    const sections: ParsedSection[] = [{
+      lineNumber: 1, startTime: 30, endTime: 45,
+      tags: ["mower", OVERLAY_LAYER_TAG], scriptText: "x", durationMs: 15000,
+    }];
+    const out = matchSections(
+      sections,
+      noClips,
+      undefined,
+      [fakeOverlayLayer({ status: "processing" })],
+      new Set(),
+    );
+    expect(out[0]!.overlayClip).toBeUndefined();
+    expect(out[0]!.warnings.some((w) => /overlay.*not ready/i.test(w))).toBe(true);
+  });
+
+  it("skips overlay when section key is in disabledOverlayShots", () => {
+    const sections: ParsedSection[] = [{
+      lineNumber: 1, startTime: 30, endTime: 45,
+      tags: ["mower", OVERLAY_LAYER_TAG], scriptText: "x", durationMs: 15000,
+    }];
+    const out = matchSections(
+      sections,
+      noClips,
+      undefined,
+      [fakeOverlayLayer()],
+      new Set(["30000-45000"]),
+    );
+    expect(out[0]!.overlayClip).toBeUndefined();
+    // Base-tag "mower" still produces a "No B-roll found" warning, but the
+    // overlay path must be silent because the user explicitly disabled this shot.
+    expect(out[0]!.warnings.some((w) => /overlay/i.test(w))).toBe(false);
+  });
+
+  it("base = talking-head-full + overlay both emit", () => {
+    const sections: ParsedSection[] = [{
+      lineNumber: 1, startTime: 30, endTime: 45,
+      tags: [FULL_LAYER_TAG, OVERLAY_LAYER_TAG], scriptText: "x", durationMs: 15000,
+    }];
+    const out = matchSections(
+      sections,
+      noClips,
+      undefined,
+      [fakeFullLayer(), fakeOverlayLayer()],
+      new Set(),
+    );
+    expect(out[0]!.clips[0]!.fileId).toBe("f-full");
+    expect(out[0]!.clips[0]!.sourceSeekMs).toBe(30000);
+    expect(out[0]!.overlayClip).toBeDefined();
+    expect(out[0]!.overlayClip!.fileId).toBe("matted-ov-1");
   });
 });
