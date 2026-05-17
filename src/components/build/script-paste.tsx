@@ -50,12 +50,13 @@ function buildLineStatuses(text: string, result: ParsedResult): LineStatus[] {
     const errs = errorsByLine.get(lineNumber);
     const warns = warningsByLine.get(lineNumber);
     const section = sectionsByLine.get(lineNumber);
+    // TODO(overlay): handle multi-tag
     if (errs) {
-      statuses.push({ lineNumber, status: "error", tag: section?.tag, messages: errs, scriptText: undefined });
+      statuses.push({ lineNumber, status: "error", tag: section?.tags[0] ?? "", messages: errs, scriptText: undefined });
     } else if (warns) {
-      statuses.push({ lineNumber, status: "warning", tag: section?.tag, messages: warns, scriptText: section?.scriptText });
+      statuses.push({ lineNumber, status: "warning", tag: section?.tags[0] ?? "", messages: warns, scriptText: section?.scriptText });
     } else {
-      statuses.push({ lineNumber, status: "ok", tag: section?.tag, messages: [], scriptText: section?.scriptText });
+      statuses.push({ lineNumber, status: "ok", tag: section?.tags[0] ?? "", messages: [], scriptText: section?.scriptText });
     }
   });
   return statuses;

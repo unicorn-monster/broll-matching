@@ -72,7 +72,8 @@ export function shuffleTimeline(
     const ps: ParsedSection = {
       lineNumber: 0,
       scriptText: "",
-      tag: section.tag,
+      // TODO(overlay): handle multi-tag
+      tags: [section.tag],
       startTime: section.startMs / 1000,
       endTime: section.endMs / 1000,
       durationMs: section.durationMs,

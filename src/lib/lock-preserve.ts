@@ -37,7 +37,9 @@ export function preserveLocks(
 
   for (const [i, ns] of newSections.entries()) {
     const head = lockQueue[0];
-    const tagMatch = head ? head.tag.toLowerCase() === ns.tag.toLowerCase() : false;
+    // TODO(overlay): handle multi-tag
+    const nsTag = ns.tags[0] ?? "";
+    const tagMatch = head ? head.tag.toLowerCase() === nsTag.toLowerCase() : false;
     // Guard against zero-duration old sections — division would be NaN/Infinity.
     const durOk =
       head && head.durationMs > 0
@@ -53,13 +55,13 @@ export function preserveLocks(
       const totalPickedMs = firstReal ? head.durationMs * firstReal.speedFactor : 0;
       const newSpeed =
         ns.durationMs > 0 && totalPickedMs > 0 ? totalPickedMs / ns.durationMs : 1;
-      const tagKey = ns.tag.toLowerCase();
+      const tagKey = nsTag.toLowerCase();
       for (const c of head.clips) {
         if (!c.isPlaceholder) markUsed(state, tagKey, c.clipId);
       }
       newTimeline.push({
         sectionIndex: i,
-        tag: ns.tag,
+        tag: nsTag,
         // Preserved locks bind to the *new* line's absolute window — the picks travel
         // with the user, the position comes from the freshly-parsed script.
         startMs: ns.startTime * 1000,

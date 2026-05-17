@@ -8,10 +8,8 @@ describe("parseScript — SRT-style", () => {
     const result = parseScript("00:00:01,250 --> 00:00:02,833 || Intro text || Hook", BASE_NAMES);
     expect(result.errors).toHaveLength(0);
     expect(result.sections).toHaveLength(1);
-    expect(result.sections[0]).toMatchObject({
-      tag: "Hook",
-      scriptText: "Intro text",
-    });
+    expect(result.sections[0]!.tags[0]).toBe("Hook");
+    expect(result.sections[0]!.scriptText).toBe("Intro text");
     // 1250ms → frame 38 (1266.67ms), 2833ms → frame 85 (2833.33ms)
     // durationMs = 85 frames - 38 frames = 47 frames = 1566.67ms
     expect(result.sections[0]!.durationMs).toBeCloseTo(1566.6667, 3);
@@ -76,7 +74,7 @@ describe("parseScript — SRT-style", () => {
     const result = parseScript("00:00:00,000 - 00:00:02,833 || text ||Hook", BASE_NAMES);
     expect(result.errors).toHaveLength(0);
     expect(result.sections).toHaveLength(1);
-    expect(result.sections[0]!.tag).toBe("Hook");
+    expect(result.sections[0]!.tags[0]).toBe("Hook");
   });
 
   it("accepts en-dash separator", () => {
@@ -95,7 +93,7 @@ describe("parseScript — SRT-style", () => {
     const result = parseScript("00:00:00.000 - 00:00:02.833 || text || Hook", BASE_NAMES);
     expect(result.errors).toHaveLength(0);
     expect(result.sections).toHaveLength(1);
-    expect(result.sections[0]!.tag).toBe("Hook");
+    expect(result.sections[0]!.tags[0]).toBe("Hook");
   });
 
   it("accepts period decimal separator with --> and produces same duration as comma form", () => {
@@ -206,5 +204,50 @@ describe("parseScript — audio bound check", () => {
       null,
     );
     expect(result.errors.filter((e) => /audio/i.test(e.message))).toHaveLength(0);
+  });
+});
+
+describe("multi-tag parsing", () => {
+  const folders = new Set(["mower", "hook"]);
+
+  it("parses a single tag into a one-element tags array", () => {
+    const r = parseScript("00:00 --> 00:05 || hi || mower", folders);
+    expect(r.errors).toEqual([]);
+    expect(r.sections[0]!.tags).toEqual(["mower"]);
+  });
+
+  it("parses `tag1, tag2` (comma + space)", () => {
+    const r = parseScript("00:00 --> 00:05 || hi || mower, talking-head-overlay", folders);
+    expect(r.errors).toEqual([]);
+    expect(r.sections[0]!.tags).toEqual(["mower", "talking-head-overlay"]);
+  });
+
+  it("tolerates extra whitespace (`mower ,  talking-head-overlay`)", () => {
+    const r = parseScript("00:00 --> 00:05 || hi || mower ,  talking-head-overlay", folders);
+    expect(r.errors).toEqual([]);
+    expect(r.sections[0]!.tags).toEqual(["mower", "talking-head-overlay"]);
+  });
+
+  it("errors on 3+ tags", () => {
+    const r = parseScript("00:00 --> 00:05 || hi || a, b, c", folders);
+    expect(r.errors[0]!.message).toMatch(/max 2 tags/);
+  });
+
+  it("errors on two base tags", () => {
+    const r = parseScript("00:00 --> 00:05 || hi || mower, hook", folders);
+    expect(r.errors[0]!.message).toMatch(/only one base tag allowed/);
+  });
+
+  it("errors on duplicate overlay tag", () => {
+    const r = parseScript(
+      "00:00 --> 00:05 || hi || talking-head-overlay, talking-head-overlay",
+      folders,
+    );
+    expect(r.errors[0]!.message).toMatch(/duplicate.*talking-head-overlay/i);
+  });
+
+  it("warns on legacy `talking-head` tag and suggests `talking-head-full`", () => {
+    const r = parseScript("00:00 --> 00:05 || hi || talking-head", folders);
+    expect(r.warnings.some((w) => /talking-head-full/.test(w.message))).toBe(true);
   });
 });

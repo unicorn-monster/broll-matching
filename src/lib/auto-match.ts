@@ -228,6 +228,8 @@ export function matchSections(
 
   return sections.map((section, sectionIndex) => {
     const warnings: string[] = [];
+    // TODO(overlay): handle multi-tag — collapse to first tag for now; Task 5 rewrites.
+    const sectionTag = section.tags[0] ?? "";
     // Carry the absolute audio-timeline position through to MatchedSection so
     // downstream consumers (timeline, render pipeline) can place B-roll clips at
     // the script-specified timestamps instead of accumulating a cursor from 0.
@@ -235,10 +237,10 @@ export function matchSections(
     const endMs = section.endTime * 1000;
 
     if (section.durationMs === 0) {
-      return { sectionIndex, tag: section.tag, startMs, endMs, durationMs: 0, clips: [], warnings };
+      return { sectionIndex, tag: sectionTag, startMs, endMs, durationMs: 0, clips: [], warnings };
     }
 
-    const key = section.tag.toLowerCase();
+    const key = sectionTag.toLowerCase();
 
     // TH layers win over any b-roll folder with a colliding name — a layer is an
     // explicit user assignment, while a folder match is implicit.
@@ -246,7 +248,7 @@ export function matchSections(
     if (layer) {
       return {
         sectionIndex,
-        tag: section.tag,
+        tag: sectionTag,
         startMs,
         endMs,
         durationMs: section.durationMs,
@@ -265,10 +267,10 @@ export function matchSections(
     const candidates = clipsByBaseName.get(key) ?? [];
 
     if (candidates.length === 0) {
-      warnings.push(`No B-roll found for tag: ${section.tag}`);
+      warnings.push(`No B-roll found for tag: ${sectionTag}`);
       return {
         sectionIndex,
-        tag: section.tag,
+        tag: sectionTag,
         startMs,
         endMs,
         durationMs: section.durationMs,
@@ -281,10 +283,10 @@ export function matchSections(
     // No speedup, no slowdown, no chaining — short clips are skipped to avoid distortion.
     const eligible = candidates.filter((c) => c.durationMs >= section.durationMs);
     if (eligible.length === 0) {
-      warnings.push(`No B-roll long enough for tag: ${section.tag} (need ≥${section.durationMs}ms)`);
+      warnings.push(`No B-roll long enough for tag: ${sectionTag} (need ≥${section.durationMs}ms)`);
       return {
         sectionIndex,
-        tag: section.tag,
+        tag: sectionTag,
         startMs,
         endMs,
         durationMs: section.durationMs,
@@ -296,7 +298,7 @@ export function matchSections(
     const clip = pickFromState(s, key, eligible);
     return {
       sectionIndex,
-      tag: section.tag,
+      tag: sectionTag,
       startMs,
       endMs,
       durationMs: section.durationMs,
