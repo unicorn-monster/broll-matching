@@ -11,12 +11,12 @@ import type { ParsedSection } from "@/lib/script-parser";
 import type { OverlayItem } from "@/lib/overlay/overlay-types";
 import { shuffleTimeline as shuffleTimelineHelper, type ShuffleResult } from "@/lib/shuffle";
 import { useMediaPool } from "@/state/media-pool";
-import type { TalkingHeadLayer } from "@/lib/talking-head/talking-head-types";
+import type { TalkingHeadKind, TalkingHeadLayer } from "@/lib/talking-head/talking-head-types";
 import {
-  addLayer as addLayerPure,
+  addOrReplaceLayer,
   removeLayer as removeLayerPure,
-  renameLayer as renameLayerPure,
 } from "@/lib/talking-head/talking-head-store";
+import { pruneStaleKeys } from "@/lib/matting/section-key";
 
 interface BuildState {
   // Project inputs
@@ -57,12 +57,24 @@ interface BuildState {
   textOverlayApplyAll: boolean;
   setTextOverlayApplyAll: (v: boolean) => void;
 
-  // Talking-head layers (multi-layer model)
+  // Talking-head layers (2-fixed-layer kind-based model: 'full' + 'overlay').
+  // Adding a layer with a kind that already exists REPLACES the existing one.
+  // For overlay-kind layers the uploaded file must already carry alpha
+  // (matted in CapCut / external tool); the app does no in-browser matting.
   talkingHeadLayers: TalkingHeadLayer[];
   talkingHeadFiles: Map<string, File>;
-  addTalkingHeadLayer: (args: { tag: string; file: File; label?: string }) => { ok: boolean; reason?: string };
+  addTalkingHeadLayer: (args: { kind: TalkingHeadKind; file: File; label?: string }) => { ok: boolean; reason?: string };
   removeTalkingHeadLayer: (id: string) => void;
+  /** No-op stub kept for legacy UI callsites; the 2-fixed-layer model has no rename concept.
+   *  Task 14 will remove the last caller. */
   renameTalkingHeadLayer: (id: string, newTag: string) => { ok: boolean; reason?: string };
+
+  // Per-shot disable for overlay (cutout PIP) sections. Keyed by `${startMs}-${endMs}`
+  // so the decision survives shuffle / reorder. Pruned automatically when a shot's
+  // boundaries change (effectively becoming a different shot) on every reparse.
+  disabledOverlayShots: Set<string>;
+  disableOverlayShot: (key: string) => void;
+  restoreOverlayShot: (key: string) => void;
 
   // Derived
   inspectorMode: "section" | "overlay" | "audio" | "empty";
@@ -111,13 +123,16 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
 
   const [talkingHeadLayers, setTalkingHeadLayers] = useState<TalkingHeadLayer[]>([]);
   const [talkingHeadFiles, setTalkingHeadFiles] = useState<Map<string, File>>(new Map());
+  const [disabledOverlayShots, setDisabledOverlayShots] = useState<Set<string>>(new Set());
 
   // Talking-head layers are session-only (in-memory) — no IndexedDB persistence by design.
-  // User re-adds via the modal after every reload.
+  // User re-adds via the modal after every reload. The 2-fixed-layer model keys layers by
+  // `kind` ('full' | 'overlay') — adding a layer of an existing kind REPLACES it (and
+  // drops the cached blob). Overlay-kind uploads are expected to already carry alpha
+  // (CapCut HEVC-alpha export etc.); the app does no in-browser matting.
   const addTalkingHeadLayer = useCallback(
-    (args: { tag: string; file: File; label?: string }) => {
-      const result = addLayerPure(talkingHeadLayers, args, talkingHeadFiles);
-      if (!result.ok) return { ok: false, reason: result.reason };
+    (args: { kind: TalkingHeadKind; file: File; label?: string }) => {
+      const result = addOrReplaceLayer(talkingHeadLayers, args, talkingHeadFiles);
       setTalkingHeadLayers(result.layers);
       setTalkingHeadFiles(result.files);
       return { ok: true };
@@ -127,27 +142,33 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
 
   const removeTalkingHeadLayer = useCallback(
     (id: string) => {
-      const layer = talkingHeadLayers.find((l) => l.id === id);
-      if (!layer) return;
-      setTalkingHeadLayers((prev) => removeLayerPure(prev, id));
-      setTalkingHeadFiles((prev) => {
-        const next = new Map(prev);
-        next.delete(layer.fileId);
-        return next;
-      });
+      // removeLayer purges the layer's file blob in one call.
+      const result = removeLayerPure(talkingHeadLayers, id, talkingHeadFiles);
+      setTalkingHeadLayers(result.layers);
+      setTalkingHeadFiles(result.files);
     },
-    [talkingHeadLayers],
+    [talkingHeadLayers, talkingHeadFiles],
   );
 
+  // No-op stub. The 2-fixed-layer model derives tags from `kind`, so renaming is
+  // meaningless. Kept only so legacy inspector callsites typecheck until Task 14
+  // strips the rename UI.
   const renameTalkingHeadLayer = useCallback(
-    (id: string, newTag: string) => {
-      const result = renameLayerPure(talkingHeadLayers, id, newTag);
-      if (!result.ok) return { ok: false, reason: result.reason };
-      setTalkingHeadLayers(result.layers);
-      return { ok: true };
-    },
-    [talkingHeadLayers],
+    (_id: string, _newTag: string) => ({ ok: false, reason: "no-op-in-fixed-layer-model" }),
+    [],
   );
+
+  const disableOverlayShot = useCallback((key: string) => {
+    setDisabledOverlayShots((prev) => new Set(prev).add(key));
+  }, []);
+
+  const restoreOverlayShot = useCallback((key: string) => {
+    setDisabledOverlayShots((prev) => {
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+  }, []);
 
   const [overlays, setOverlaysState] = useState<OverlayItem[]>([]);
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
@@ -206,7 +227,13 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     if (!sections || !timeline) return;
     const clipsByBaseName = buildClipsByBaseName(mediaPoolClips);
-    const result = preserveLocks(timeline, sections, clipsByBaseName, talkingHeadLayers);
+    const result = preserveLocks(
+      timeline,
+      sections,
+      clipsByBaseName,
+      talkingHeadLayers,
+      disabledOverlayShots,
+    );
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setTimeline(result.newTimeline);
     if (result.droppedCount > 0) {
@@ -249,12 +276,18 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
     setSections(s);
     setTimeline(t);
     setSelectedSectionIndex(null);
+    // Drop disable-shot keys whose section boundaries changed (or vanished). ParsedSection
+    // tracks times in seconds — convert to ms (×1000) to match the section-key format.
+    const ranges = s.map((p) => ({ startMs: p.startTime * 1000, endMs: p.endTime * 1000 }));
+    setDisabledOverlayShots((prev) => pruneStaleKeys(prev, ranges));
   }
 
   function clearParsed() {
     setSections(null);
     setTimeline(null);
     setSelectedSectionIndex(null);
+    // Script was cleared — no live shots remain, so all disable keys are stale.
+    setDisabledOverlayShots(new Set());
   }
 
   const value = useMemo<BuildState>(() => {
@@ -280,6 +313,9 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
       addTalkingHeadLayer,
       removeTalkingHeadLayer,
       renameTalkingHeadLayer,
+      disabledOverlayShots,
+      disableOverlayShot,
+      restoreOverlayShot,
       scriptText,
       setScriptText,
       sections,
@@ -326,6 +362,9 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
     addTalkingHeadLayer,
     removeTalkingHeadLayer,
     renameTalkingHeadLayer,
+    disabledOverlayShots,
+    disableOverlayShot,
+    restoreOverlayShot,
     scriptText,
     sections,
     timeline,

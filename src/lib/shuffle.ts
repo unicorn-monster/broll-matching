@@ -5,7 +5,7 @@ import {
   type ClipMetadata,
   type MatchedSection,
 } from "./auto-match";
-import type { ParsedSection } from "./script-parser";
+import { OVERLAY_TAG, type ParsedSection } from "./script-parser";
 import { isLayerFileId, type TalkingHeadLayer } from "@/lib/talking-head/talking-head-types";
 
 export interface ShuffleResult {
@@ -69,10 +69,14 @@ export function shuffleTimeline(
       continue;
     }
 
+    // Reconstruct the ParsedSection's tag list from the MatchedSection. The base
+    // tag is always present; the overlay tag is re-added when the section had an
+    // attached overlayClip so re-matching keeps the overlay opt-in.
+    const tags = section.overlayClip ? [section.tag, OVERLAY_TAG] : [section.tag];
     const ps: ParsedSection = {
       lineNumber: 0,
       scriptText: "",
-      tag: section.tag,
+      tags,
       startTime: section.startMs / 1000,
       endTime: section.endMs / 1000,
       durationMs: section.durationMs,

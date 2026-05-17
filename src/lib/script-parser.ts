@@ -1,10 +1,14 @@
 import { snapMsToFrame } from "./frame-align";
 
+export const OVERLAY_TAG = "talking-head-overlay";
+export const FULL_TAG = "talking-head-full";
+export const LEGACY_FULL_TAG = "talking-head";
+
 export interface ParsedSection {
   lineNumber: number;
   startTime: number;   // seconds (frame-snapped, may have fractional ms)
   endTime: number;     // seconds (frame-snapped)
-  tag: string;
+  tags: string[];      // 1 base tag, optionally + overlay tag (max 2)
   scriptText: string;
   durationMs: number;  // frame-snapped (endMs - startMs)
 }
@@ -71,6 +75,41 @@ export function parseScript(
       errors.push({ line: lineNumber, message: `Internal regex error at line ${lineNumber}` });
       return;
     }
+
+    const rawTags = tag.split(",").map((t) => t.trim()).filter((t) => t.length > 0);
+
+    if (rawTags.length > 2) {
+      errors.push({
+        line: lineNumber,
+        message: `Line ${lineNumber}: max 2 tags per section (got ${rawTags.length})`,
+      });
+      return;
+    }
+
+    const overlayCount = rawTags.filter((t) => t === OVERLAY_TAG).length;
+    if (overlayCount > 1) {
+      errors.push({
+        line: lineNumber,
+        message: `Line ${lineNumber}: duplicate '${OVERLAY_TAG}' tag`,
+      });
+      return;
+    }
+    const baseTags = rawTags.filter((t) => t !== OVERLAY_TAG);
+    if (baseTags.length > 1) {
+      errors.push({
+        line: lineNumber,
+        message: `Line ${lineNumber}: only one base tag allowed (got ${baseTags.map((t) => `'${t}'`).join(", ")})`,
+      });
+      return;
+    }
+
+    if (rawTags.includes(LEGACY_FULL_TAG)) {
+      warnings.push({
+        line: lineNumber,
+        message: `Line ${lineNumber}: tag '${LEGACY_FULL_TAG}' has been renamed to '${FULL_TAG}'`,
+      });
+    }
+
     const rawStartMs = parseTimestampToMs(sh, sm, ss, sms);
     const rawEndMs = parseTimestampToMs(eh, em, es, ems);
 
@@ -105,10 +144,13 @@ export function parseScript(
       return;
     }
 
-    if (!availableBaseNames.has(tag.toLowerCase())) {
+    // Only validate the base tag against B-roll folder names. Overlay tag is
+    // synthetic (handled by talking-head layer system) — skip the folder check.
+    const baseTag = baseTags[0];
+    if (baseTag && !availableBaseNames.has(baseTag.toLowerCase())) {
       warnings.push({
         line: lineNumber,
-        message: `Line ${lineNumber}: tag "${tag}" has no matching B-roll base name. Will render black frames.`,
+        message: `Line ${lineNumber}: tag "${baseTag}" has no matching B-roll base name. Will render black frames.`,
       });
     }
 
@@ -116,7 +158,7 @@ export function parseScript(
       lineNumber,
       startTime: startMs / 1000,
       endTime: endMs / 1000,
-      tag,
+      tags: rawTags,
       scriptText: scriptText.trim(),
       durationMs,
     });

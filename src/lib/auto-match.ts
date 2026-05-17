@@ -1,5 +1,6 @@
 import { deriveBaseName } from "./broll";
-import type { ParsedSection } from "./script-parser";
+import { sectionKey } from "./matting/section-key";
+import { OVERLAY_TAG, type ParsedSection } from "./script-parser";
 import type { TalkingHeadLayer } from "@/lib/talking-head/talking-head-types";
 
 /** Sections with any clip whose speedFactor exceeds this get a visual warning. */
@@ -73,15 +74,20 @@ export interface MatchedClip {
   isPlaceholder: boolean;
   /** Absolute seek-into-source position (ms). Set only on talking-head clips. */
   sourceSeekMs?: number;
+  /** True when this clip is the matted overlay layered on top of the base clip. */
+  isOverlay?: boolean;
 }
 
 export interface MatchedSection {
   sectionIndex: number;
+  /** First base tag (excluding overlay tag), kept for back-compat UI labels. */
   tag: string;
   startMs: number;
   endMs: number;
   durationMs: number;
   clips: MatchedClip[];
+  /** Overlay clip layered on top of `clips`; present only when section opts into overlay. */
+  overlayClip?: MatchedClip;
   warnings: string[];
   userLocked?: boolean;
 }
@@ -218,6 +224,7 @@ export function matchSections(
   clipsByBaseName: Map<string, ClipMetadata[]>,
   state?: MatchState,
   talkingHeadLayers: TalkingHeadLayer[] = [],
+  disabledOverlayShots: Set<string> = new Set(),
 ): MatchedSection[] {
   const s = state ?? createMatchState();
   // Build the tag→layer lookup once per call so each section is O(1). Tags are
@@ -225,9 +232,17 @@ export function matchSections(
   // write); section tags are lowercased at the lookup site below.
   const layerByTag = new Map<string, TalkingHeadLayer>();
   for (const l of talkingHeadLayers) layerByTag.set(l.tag, l);
+  // The overlay layer is the single layer (if any) with kind === 'overlay'.
+  // Cache it so the per-section loop is O(1) for overlay lookup.
+  const overlayLayer = talkingHeadLayers.find((l) => l.kind === "overlay");
 
   return sections.map((section, sectionIndex) => {
     const warnings: string[] = [];
+    // Section tags may include the synthetic overlay tag; the *base* tag is the
+    // first non-overlay tag and drives base-clip resolution. The overlay tag is
+    // handled separately below so it never collides with B-roll folder lookups.
+    const baseTag = (section.tags.find((t) => t !== OVERLAY_TAG) ?? "").toLowerCase();
+    const hasOverlay = section.tags.includes(OVERLAY_TAG);
     // Carry the absolute audio-timeline position through to MatchedSection so
     // downstream consumers (timeline, render pipeline) can place B-roll clips at
     // the script-specified timestamps instead of accumulating a cursor from 0.
@@ -235,78 +250,79 @@ export function matchSections(
     const endMs = section.endTime * 1000;
 
     if (section.durationMs === 0) {
-      return { sectionIndex, tag: section.tag, startMs, endMs, durationMs: 0, clips: [], warnings };
+      return { sectionIndex, tag: baseTag, startMs, endMs, durationMs: 0, clips: [], warnings };
     }
 
-    const key = section.tag.toLowerCase();
+    // Resolve the base layer clip[s] first, then attach the overlay (if any)
+    // to the result. Base resolution mirrors the pre-overlay behaviour exactly.
+    let clips: MatchedClip[];
 
     // TH layers win over any b-roll folder with a colliding name — a layer is an
     // explicit user assignment, while a folder match is implicit.
-    const layer = layerByTag.get(key);
+    const layer = layerByTag.get(baseTag);
     if (layer) {
-      return {
-        sectionIndex,
-        tag: section.tag,
-        startMs,
-        endMs,
-        durationMs: section.durationMs,
-        clips: [{
-          clipId: "talking-head",
-          fileId: layer.fileId,
+      clips = [{
+        clipId: "talking-head",
+        fileId: layer.fileId,
+        speedFactor: 1,
+        trimDurationMs: section.durationMs,
+        sourceSeekMs: startMs,
+        isPlaceholder: false,
+      }];
+    } else {
+      const candidates = clipsByBaseName.get(baseTag) ?? [];
+
+      if (candidates.length === 0) {
+        warnings.push(`No B-roll found for tag: ${baseTag}`);
+        clips = [{ clipId: "placeholder", fileId: "", speedFactor: 1.0, isPlaceholder: true }];
+      } else {
+        // Trim-only: pick any clip with durationMs >= section.durationMs and trim from the start.
+        // No speedup, no slowdown, no chaining — short clips are skipped to avoid distortion.
+        const eligible = candidates.filter((c) => c.durationMs >= section.durationMs);
+        if (eligible.length === 0) {
+          warnings.push(`No B-roll long enough for tag: ${baseTag} (need ≥${section.durationMs}ms)`);
+          clips = [{ clipId: "placeholder", fileId: "", speedFactor: 1, isPlaceholder: true }];
+        } else {
+          const clip = pickFromState(s, baseTag, eligible);
+          clips = [{
+            clipId: clip.id,
+            fileId: clip.fileId,
+            speedFactor: 1,
+            trimDurationMs: section.durationMs,
+            isPlaceholder: false,
+          }];
+        }
+      }
+    }
+
+    // Resolve overlay: only when the section opted in, the user hasn't disabled
+    // this shot, and an overlay layer is configured. The uploaded overlay file is
+    // assumed to already carry alpha (matted in CapCut etc.); ffmpeg's overlay
+    // filter composes it server-side. No in-app matting → no readiness gate.
+    let overlayClip: MatchedClip | undefined;
+    if (hasOverlay && overlayLayer) {
+      const isDisabled = disabledOverlayShots.has(sectionKey({ startMs, endMs }));
+      if (!isDisabled) {
+        overlayClip = {
+          clipId: "talking-head-overlay",
+          fileId: overlayLayer.fileId,
           speedFactor: 1,
           trimDurationMs: section.durationMs,
           sourceSeekMs: startMs,
           isPlaceholder: false,
-        }],
-        warnings,
-      };
+          isOverlay: true,
+        };
+      }
     }
 
-    const candidates = clipsByBaseName.get(key) ?? [];
-
-    if (candidates.length === 0) {
-      warnings.push(`No B-roll found for tag: ${section.tag}`);
-      return {
-        sectionIndex,
-        tag: section.tag,
-        startMs,
-        endMs,
-        durationMs: section.durationMs,
-        clips: [{ clipId: "placeholder", fileId: "", speedFactor: 1.0, isPlaceholder: true }],
-        warnings,
-      };
-    }
-
-    // Trim-only: pick any clip with durationMs >= section.durationMs and trim from the start.
-    // No speedup, no slowdown, no chaining — short clips are skipped to avoid distortion.
-    const eligible = candidates.filter((c) => c.durationMs >= section.durationMs);
-    if (eligible.length === 0) {
-      warnings.push(`No B-roll long enough for tag: ${section.tag} (need ≥${section.durationMs}ms)`);
-      return {
-        sectionIndex,
-        tag: section.tag,
-        startMs,
-        endMs,
-        durationMs: section.durationMs,
-        clips: [{ clipId: "placeholder", fileId: "", speedFactor: 1, isPlaceholder: true }],
-        warnings,
-      };
-    }
-
-    const clip = pickFromState(s, key, eligible);
     return {
       sectionIndex,
-      tag: section.tag,
+      tag: baseTag,
       startMs,
       endMs,
       durationMs: section.durationMs,
-      clips: [{
-        clipId: clip.id,
-        fileId: clip.fileId,
-        speedFactor: 1,
-        trimDurationMs: section.durationMs,
-        isPlaceholder: false,
-      }],
+      clips,
+      ...(overlayClip ? { overlayClip } : {}),
       warnings,
     };
   });

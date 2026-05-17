@@ -11,6 +11,8 @@ import {
   clipIdentityKey,
 } from "@/lib/playback-plan";
 import { findActiveOverlays, findTopmostActive, computeFadedVolume } from "@/lib/overlay/overlay-render-plan";
+import { sectionKey } from "@/lib/matting/section-key";
+import { OVERLAY_PADDING_PX, OVERLAY_WIDTH_RATIO } from "@/lib/render-segments";
 
 import { formatMs } from "@/lib/format-time";
 import { TextOverlayLayer } from "./text-overlay-layer";
@@ -35,6 +37,7 @@ export function PreviewPlayer() {
     setIsPlaying,
     playerTogglePlayRef,
     overlays,
+    disabledOverlayShots,
   } = useBuildState();
 
   const mediaPool = useMediaPool();
@@ -42,6 +45,15 @@ export function PreviewPlayer() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
   const overlayVideoRefs = useRef<Map<string, HTMLVideoElement | null>>(new Map());
+  // Single <video> for the talking-head overlay (pre-matted by the user). We
+  // reuse one element across sections (re-pointing src as the active section
+  // changes) rather than rendering one per layer — the editor model only allows
+  // a single 'overlay' layer at a time. Alpha is only previewed correctly when
+  // the browser can decode the source's alpha channel (VP9-alpha webm in
+  // Chromium; HEVC-alpha mp4 in Safari). Other browsers will draw opaque, but
+  // the server-side ffmpeg render still composites alpha correctly.
+  const mattedOverlayVideoRef = useRef<HTMLVideoElement | null>(null);
+  const mattedOverlayCurrentFileIdRef = useRef<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const previewFrameRef = useRef<HTMLDivElement | null>(null);
   const [frameSize, setFrameSize] = useState({ width: 0, height: 0 });
@@ -237,6 +249,62 @@ export function PreviewPlayer() {
     [overlays],
   );
 
+  // Mirrors the per-frame matted overlay draw described in the talking-head spec.
+  // Because the existing preview composes layers via stacked DOM <video> elements
+  // (not a canvas drawImage compositor), we adapt by reusing a single positioned
+  // <video> element and toggling its src/visibility per active section.
+  const ensureMattedOverlayLoaded = useCallback(
+    (audioMs: number) => {
+      const vid = mattedOverlayVideoRef.current;
+      if (!vid || !timeline) return;
+      const audio = audioRef.current;
+      const audioPlaying = audio !== null && !audio.paused;
+
+      const sectionIdx = findSectionAtMs(timeline, audioMs);
+      const section = sectionIdx !== null ? timeline[sectionIdx] : null;
+      const overlayClip = section?.overlayClip;
+      const isDisabled = section
+        ? disabledOverlayShots.has(sectionKey({ startMs: section.startMs, endMs: section.endMs }))
+        : false;
+
+      // Either no overlay configured for this section, the user disabled this shot,
+      // or the overlay file blob hasn't been registered yet — hide the element and bail.
+      const url = overlayClip ? clipUrlsRef.current.get(overlayClip.fileId) : undefined;
+      if (!section || !overlayClip || isDisabled || !url) {
+        if (!vid.paused) vid.pause();
+        vid.style.display = "none";
+        mattedOverlayCurrentFileIdRef.current = null;
+        return;
+      }
+
+      // Re-point src when the active overlay file changes (different layer / replaced).
+      if (mattedOverlayCurrentFileIdRef.current !== overlayClip.fileId) {
+        if (vid.src !== url && vid.currentSrc !== url) vid.src = url;
+        mattedOverlayCurrentFileIdRef.current = overlayClip.fileId;
+      }
+
+      vid.style.display = "block";
+
+      // Per the spec: desiredTime = (sourceSeekMs + local) / 1000, where local is
+      // ms elapsed since the section's start. sourceSeekMs is the absolute position
+      // in the overlay source corresponding to this section's audio window.
+      const seekMs = overlayClip.sourceSeekMs ?? section.startMs;
+      const local = Math.max(0, audioMs - section.startMs);
+      const desiredTime = (seekMs + local) / 1000;
+      if (vid.readyState >= 2 && Math.abs(vid.currentTime - desiredTime) > 0.05) {
+        try {
+          vid.currentTime = Math.max(0, desiredTime);
+        } catch {
+          // metadata may not be ready yet — next tick will retry
+        }
+      }
+
+      if (audioPlaying && vid.paused) void vid.play();
+      else if (!audioPlaying && !vid.paused) vid.pause();
+    },
+    [timeline, disabledOverlayShots],
+  );
+
   // Register seek dispatcher for the timeline.
   useEffect(() => {
     playerSeekRef.current = (ms: number) => {
@@ -246,11 +314,12 @@ export function PreviewPlayer() {
       setPlayheadMs(ms);
       ensureClipLoaded(ms);
       ensureOverlaysLoaded(ms);
+      ensureMattedOverlayLoaded(ms);
     };
     return () => {
       playerSeekRef.current = null;
     };
-  }, [ensureClipLoaded, ensureOverlaysLoaded, playerSeekRef, setPlayheadMs]);
+  }, [ensureClipLoaded, ensureOverlaysLoaded, ensureMattedOverlayLoaded, playerSeekRef, setPlayheadMs]);
 
   // rAF loop: drives playhead, swap detection, and section selection from
   // audio.currentTime while playing.
@@ -264,6 +333,7 @@ export function PreviewPlayer() {
       setPlayheadMs(audioMs);
       ensureClipLoaded(audioMs);
       ensureOverlaysLoaded(audioMs);
+      ensureMattedOverlayLoaded(audioMs);
       if (timeline) {
         const sectionIdx = findSectionAtMs(timeline, audioMs);
         if (sectionIdx !== null && sectionIdx !== selectedSectionRef.current) {
@@ -279,7 +349,7 @@ export function PreviewPlayer() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [isPlaying, plan, timeline, ensureClipLoaded, ensureOverlaysLoaded, setPlayheadMs, setSelectedSectionIndex]);
+  }, [isPlaying, plan, timeline, ensureClipLoaded, ensureOverlaysLoaded, ensureMattedOverlayLoaded, setPlayheadMs, setSelectedSectionIndex]);
 
   // When user clicks a section in the timeline (sets selectedSectionIndex
   // directly, not via the rAF loop), seek the audio to that section's start.
@@ -297,6 +367,7 @@ export function PreviewPlayer() {
       setPlayheadMs(cursor);
       ensureClipLoaded(cursor);
       ensureOverlaysLoaded(cursor);
+      ensureMattedOverlayLoaded(cursor);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSectionIndex]);
@@ -472,6 +543,25 @@ export function PreviewPlayer() {
             style={{ zIndex: o.trackIndex + 10, display: "none" }}
           />
         ))}
+        {/* Talking-head matted overlay (PIP). Sized to OVERLAY_WIDTH_RATIO of the
+            preview frame width; padding is scaled proportionally from the renderer's
+            reference base (OVERLAY_PADDING_PX out of an assumed 1080px source width).
+            object-contain preserves the matted webm's intrinsic aspect ratio so the
+            element grows/shrinks vertically with the source — same behaviour as the
+            ffmpeg overlay filter at render time. */}
+        <video
+          ref={mattedOverlayVideoRef}
+          playsInline
+          muted
+          className="absolute object-contain"
+          style={{
+            display: "none",
+            zIndex: 50,
+            width: `${OVERLAY_WIDTH_RATIO * 100}%`,
+            right: `${(OVERLAY_PADDING_PX / 1080) * 100}%`,
+            bottom: `${(OVERLAY_PADDING_PX / 1080) * 100}%`,
+          }}
+        />
         {frameSize.width > 0 && frameSize.height > 0 && (
           <TextOverlayLayer frameWidthPx={frameSize.width} frameHeightPx={frameSize.height} />
         )}

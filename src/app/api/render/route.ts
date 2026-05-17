@@ -4,6 +4,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { NextResponse } from "next/server";
 import type { MatchedSection } from "@/lib/auto-match";
+import {
+  buildBaseSegmentArgs,
+  buildBlackGapArgs,
+  buildOverlayMergeArgs,
+  FPS,
+} from "@/lib/render-segments";
 
 export const runtime = "nodejs";
 export const maxDuration = 600;
@@ -16,7 +22,6 @@ interface RenderRequest {
   audioDurationMs: number;
 }
 
-const FPS = 30;
 const ONE_FRAME_MS = 1000 / FPS;
 
 async function encodeBlackSegment(
@@ -27,18 +32,14 @@ async function encodeBlackSegment(
   outputHeight: number,
 ): Promise<string> {
   const segPath = path.join(workDir, `gap-${index}.ts`);
-  await runFFmpeg([
-    "-y",
-    "-f", "lavfi",
-    "-i", `color=c=black:s=${outputWidth}x${outputHeight}:r=${FPS}:d=${durationMs / 1000}`,
-    "-c:v", "libx264",
-    "-preset", "ultrafast",
-    "-tune", "fastdecode",
-    "-pix_fmt", "yuv420p",
-    "-r", String(FPS),
-    "-f", "mpegts",
-    segPath,
-  ]);
+  await runFFmpeg(
+    buildBlackGapArgs({
+      durationMs,
+      outputWidth,
+      outputHeight,
+      outPath: segPath,
+    }),
+  );
   return segPath;
 }
 
@@ -85,6 +86,17 @@ export async function POST(req: Request) {
       const p = path.join(workDir, `clip-${safeName}.mp4`);
       await writeFile(p, Buffer.from(await entry.arrayBuffer()));
       clipsByFileId.set(entry.name, p);
+    }
+    // Matted talking-head overlays (alpha-channel webm produced by the matting worker).
+    // Same File.name → fileId convention as the regular `clips` field so the per-section
+    // overlay branch below can look up the correct on-disk path by `section.overlayClip.fileId`.
+    const mattedByFileId = new Map<string, string>();
+    for (const entry of formData.getAll("matted-clips")) {
+      if (!(entry instanceof File)) continue;
+      const safeName = entry.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const p = path.join(workDir, `matted-${safeName}.webm`);
+      await writeFile(p, Buffer.from(await entry.arrayBuffer()));
+      mattedByFileId.set(entry.name, p);
     }
     const audioPath = path.join(workDir, "audio.mp3");
     await writeFile(audioPath, Buffer.from(await audio.arrayBuffer()));
@@ -145,73 +157,106 @@ export async function POST(req: Request) {
         segments.push(await encodeBlackSegment(workDir, gapIndex++, gapBefore, outputWidth, outputHeight));
       }
 
+      // Track the base segments belonging to *this* section so the overlay branch
+      // below can swap them for a single merged segment without affecting prior
+      // sections' contributions to the top-level `segments` array.
+      const currentSectionSegments: string[] = [];
+
       // Section's clip(s) — same encode logic as before.
       for (let j = 0; j < section.clips.length; j++) {
         const matched = section.clips[j];
         if (!matched) continue;
         const segPath = path.join(workDir, `seg-${i}-${j}.ts`);
-        const sectionSec = section.durationMs / 1000;
 
         if (matched.sourceSeekMs !== undefined) {
-          // Talking-head slice: seek to sourceSeekMs inside the source MP4 before
-          // opening the input so ffmpeg discards frames before the seek point.
-          // PTS is reset to zero after the seek via setpts=PTS-STARTPTS, which
-          // prevents timestamp discontinuities in the MPEG-TS segment.
+          // Talking-head slice — see buildBaseSegmentArgs for input-seek + PTS reset rationale.
           const inputPath = clipsByFileId.get(matched.fileId);
           if (!inputPath) continue;
-          await runFFmpeg([
-            "-y",
-            "-ss", String(matched.sourceSeekMs / 1000),  // input seek (accurate by default in ffmpeg ≥ 2.1)
-            "-i", inputPath,
-            "-t", String((matched.trimDurationMs ?? section.durationMs) / 1000),
-            "-vf",
-              `scale=${outputWidth}:${outputHeight}:force_original_aspect_ratio=decrease,` +
-              `pad=${outputWidth}:${outputHeight}:(ow-iw)/2:(oh-ih)/2,` +
-              `setpts=PTS-STARTPTS`,
-            "-an",
-            "-c:v", "libx264",
-            "-preset", "ultrafast",
-            "-tune", "fastdecode",
-            "-pix_fmt", "yuv420p",
-            "-r", String(FPS),
-            "-f", "mpegts",
-            segPath,
-          ]);
+          await runFFmpeg(
+            buildBaseSegmentArgs({
+              kind: "talking-head",
+              inputPath,
+              sourceSeekMs: matched.sourceSeekMs,
+              trimDurationMs: matched.trimDurationMs ?? section.durationMs,
+              outputWidth,
+              outputHeight,
+              outPath: segPath,
+            }),
+          );
         } else if (matched.isPlaceholder) {
-          await runFFmpeg([
-            "-y",
-            "-f", "lavfi",
-            "-i", `color=c=black:s=${outputWidth}x${outputHeight}:r=${FPS}:d=${sectionSec}`,
-            "-c:v", "libx264",
-            "-preset", "ultrafast",
-            "-tune", "fastdecode",
-            "-pix_fmt", "yuv420p",
-            "-r", String(FPS),
-            "-f", "mpegts",
-            segPath,
-          ]);
+          await runFFmpeg(
+            buildBaseSegmentArgs({
+              kind: "placeholder",
+              durationMs: section.durationMs,
+              outputWidth,
+              outputHeight,
+              outPath: segPath,
+            }),
+          );
         } else {
           const inputPath = clipsByFileId.get(matched.fileId);
           if (!inputPath) continue;
-          await runFFmpeg([
-            "-y",
-            "-i", inputPath,
-            ...(matched.trimDurationMs ? ["-t", String(matched.trimDurationMs / 1000)] : []),
-            "-vf",
-            `scale=${outputWidth}:${outputHeight}:force_original_aspect_ratio=decrease,` +
-            `pad=${outputWidth}:${outputHeight}:(ow-iw)/2:(oh-ih)/2,` +
-            `setpts=${(1 / matched.speedFactor).toFixed(4)}*PTS`,
-            "-an",
-            "-c:v", "libx264",
-            "-preset", "ultrafast",
-            "-tune", "fastdecode",
-            "-pix_fmt", "yuv420p",
-            "-r", String(FPS),
-            "-f", "mpegts",
-            segPath,
-          ]);
+          await runFFmpeg(
+            buildBaseSegmentArgs({
+              kind: "broll",
+              inputPath,
+              ...(matched.trimDurationMs !== undefined
+                ? { trimDurationMs: matched.trimDurationMs }
+                : {}),
+              speedFactor: matched.speedFactor,
+              outputWidth,
+              outputHeight,
+              outPath: segPath,
+            }),
+          );
         }
         segments.push(segPath);
+        currentSectionSegments.push(segPath);
+      }
+
+      // Per-section overlay branch: if the section has a matted talking-head overlay,
+      // collapse its base segments into a single intermediate MP4, composite the matted
+      // webm onto it, and replace the base segments in the top-level `segments` array
+      // with the merged MPEG-TS. The trimDurationMs cap inside buildOverlayMergeArgs
+      // keeps the merged segment ≤ section duration so downstream concat timing holds.
+      if (section.overlayClip) {
+        const overlayPath = mattedByFileId.get(section.overlayClip.fileId);
+        if (overlayPath && currentSectionSegments.length > 0) {
+          const baseConcatList = path.join(workDir, `base-list-${i}.txt`);
+          await writeFile(
+            baseConcatList,
+            currentSectionSegments.map((p) => `file '${p}'`).join("\n"),
+          );
+          const baseMp4 = path.join(workDir, `base-${i}.mp4`);
+          await runFFmpeg([
+            "-y",
+            "-f", "concat", "-safe", "0", "-i", baseConcatList,
+            "-c", "copy", baseMp4,
+          ]);
+
+          const mergedPath = path.join(workDir, `seg-${i}-merged.ts`);
+          await runFFmpeg(
+            buildOverlayMergeArgs({
+              basePath: baseMp4,
+              overlayPath,
+              sourceSeekMs: section.overlayClip.sourceSeekMs ?? 0,
+              trimDurationMs: section.overlayClip.trimDurationMs ?? section.durationMs,
+              outputWidth,
+              outputHeight,
+              outPath: mergedPath,
+            }),
+          );
+
+          // Splice the base segments out of the top-level array and append the
+          // merged one in their place. Splicing by indexOf (rather than position
+          // math) keeps this robust even if a future change interleaves additional
+          // segments between the per-clip loop and the overlay branch.
+          for (const baseSeg of currentSectionSegments) {
+            const idx = segments.indexOf(baseSeg);
+            if (idx >= 0) segments.splice(idx, 1);
+          }
+          segments.push(mergedPath);
+        }
       }
 
       cursor = section.endMs;

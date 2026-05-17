@@ -8,10 +8,19 @@ import {
 } from "../auto-match";
 import type { ClipMetadata } from "../auto-match";
 import type { ParsedSection } from "../script-parser";
-import type { TalkingHeadLayer } from "@/lib/talking-head/talking-head-types";
+import {
+  FULL_LAYER_TAG,
+  OVERLAY_LAYER_TAG,
+  type TalkingHeadLayer,
+} from "@/lib/talking-head/talking-head-types";
 
 const TH_LAYER_FILE_ID = "__th_layer__ugc";
-const thLayer: TalkingHeadLayer = { id: "ugc", tag: "ugc-head", fileId: TH_LAYER_FILE_ID };
+const thLayer: TalkingHeadLayer = {
+  id: "ugc",
+  tag: "ugc-head",
+  fileId: TH_LAYER_FILE_ID,
+  kind: "full",
+};
 
 const makeClip = (brollName: string, durationMs: number) => ({
   id: brollName,
@@ -31,7 +40,7 @@ const makeSection = (tag: string, durationMs: number): ParsedSection => ({
   lineNumber: 1,
   startTime: 0,
   endTime: durationMs / 1000,
-  tag,
+  tags: [tag],
   scriptText: "text",
   durationMs,
 });
@@ -390,7 +399,7 @@ describe("matchSections — absolute positioning", () => {
       lineNumber: 1,
       startTime: 12.5,           // 12500ms
       endTime: 16.0,             // 16000ms
-      tag: "Hook",
+      tags: ["Hook"],
       scriptText: "x",
       durationMs: 3500,
     };
@@ -405,7 +414,7 @@ describe("matchSections — absolute positioning", () => {
       lineNumber: 1,
       startTime: 5,
       endTime: 8,
-      tag: "unknown",
+      tags: ["unknown"],
       scriptText: "x",
       durationMs: 3000,
     };
@@ -420,7 +429,7 @@ describe("matchSections — absolute positioning", () => {
       lineNumber: 1,
       startTime: 7,
       endTime: 7,
-      tag: "Hook",
+      tags: ["Hook"],
       scriptText: "x",
       durationMs: 0,
     };
@@ -438,7 +447,7 @@ describe("matchSections — talking-head branch", () => {
         lineNumber: 1,
         startTime: 24.7,
         endTime: 27.36,
-        tag: "ugc-head",
+        tags: ["ugc-head"],
         scriptText: "hi",
         durationMs: 2660,
       },
@@ -464,7 +473,7 @@ describe("matchSections — talking-head branch", () => {
         lineNumber: 1,
         startTime: 0,
         endTime: 1,
-        tag: "UGC-Head",
+        tags: ["UGC-Head"],
         scriptText: "",
         durationMs: 1000,
       },
@@ -480,7 +489,7 @@ describe("matchSections — talking-head branch", () => {
         lineNumber: 1,
         startTime: 0,
         endTime: 1,
-        tag: "ugc-head",
+        tags: ["ugc-head"],
         scriptText: "",
         durationMs: 1000,
       },
@@ -497,7 +506,7 @@ describe("matchSections — talking-head branch", () => {
         lineNumber: 1,
         startTime: 0,
         endTime: 1,
-        tag: "fs-clipper-freakout",
+        tags: ["fs-clipper-freakout"],
         scriptText: "",
         durationMs: 1000,
       },
@@ -519,7 +528,7 @@ describe("matchSections — talking-head branch", () => {
         lineNumber: 1,
         startTime: 0,
         endTime: 1,
-        tag: "fs-clipper-freakout",
+        tags: ["fs-clipper-freakout"],
         scriptText: "",
         durationMs: 1000,
       },
@@ -527,7 +536,7 @@ describe("matchSections — talking-head branch", () => {
         lineNumber: 2,
         startTime: 1,
         endTime: 2,
-        tag: "ugc-head",
+        tags: ["ugc-head"],
         scriptText: "",
         durationMs: 1000,
       },
@@ -549,7 +558,7 @@ describe("matchSections — talking-head branch", () => {
         lineNumber: 1,
         startTime: 0,
         endTime: 0,
-        tag: "ugc-head",
+        tags: ["ugc-head"],
         scriptText: "",
         durationMs: 0,
       },
@@ -560,12 +569,12 @@ describe("matchSections — talking-head branch", () => {
 });
 
 describe("matchSections — multi talking-head layers", () => {
-  const layerA: TalkingHeadLayer = { id: "a", tag: "doctor", fileId: "__th_layer__a" };
-  const layerB: TalkingHeadLayer = { id: "b", tag: "expert", fileId: "__th_layer__b" };
+  const layerA: TalkingHeadLayer = { id: "a", tag: "doctor", fileId: "__th_layer__a", kind: "full" };
+  const layerB: TalkingHeadLayer = { id: "b", tag: "expert", fileId: "__th_layer__b", kind: "full" };
 
   it("routes a section to the matching TH layer (by tag, case-insensitive)", () => {
     const sections: ParsedSection[] = [
-      { lineNumber: 1, startTime: 0, endTime: 4, tag: "DOCTOR", scriptText: "x", durationMs: 4000 },
+      { lineNumber: 1, startTime: 0, endTime: 4, tags: ["DOCTOR"], scriptText: "x", durationMs: 4000 },
     ];
     const matched = matchSections(sections, new Map(), undefined, [layerA, layerB]);
     expect(matched[0]!.clips).toHaveLength(1);
@@ -575,7 +584,7 @@ describe("matchSections — multi talking-head layers", () => {
 
   it("TH wins over b-roll folder of the same name", () => {
     const sections: ParsedSection[] = [
-      { lineNumber: 1, startTime: 0, endTime: 4, tag: "doctor", scriptText: "x", durationMs: 4000 },
+      { lineNumber: 1, startTime: 0, endTime: 4, tags: ["doctor"], scriptText: "x", durationMs: 4000 },
     ];
     // ClipMetadata in this codebase uses `brollName` / `baseName` / `folderId`
     // (not `folderName`). buildClipsByBaseName keys off deriveBaseName(brollName)
@@ -587,11 +596,75 @@ describe("matchSections — multi talking-head layers", () => {
 
   it("routes different sections to different layers", () => {
     const sections: ParsedSection[] = [
-      { lineNumber: 1, startTime: 0, endTime: 4, tag: "doctor", scriptText: "x", durationMs: 4000 },
-      { lineNumber: 2, startTime: 4, endTime: 8, tag: "expert", scriptText: "y", durationMs: 4000 },
+      { lineNumber: 1, startTime: 0, endTime: 4, tags: ["doctor"], scriptText: "x", durationMs: 4000 },
+      { lineNumber: 2, startTime: 4, endTime: 8, tags: ["expert"], scriptText: "y", durationMs: 4000 },
     ];
     const matched = matchSections(sections, new Map(), undefined, [layerA, layerB]);
     expect(matched[0]!.clips[0]!.fileId).toBe(layerA.fileId);
     expect(matched[1]!.clips[0]!.fileId).toBe(layerB.fileId);
+  });
+});
+
+describe("matchSections — overlay", () => {
+  function fakeFullLayer(): TalkingHeadLayer {
+    return { id: "full-1", tag: FULL_LAYER_TAG, fileId: "f-full", kind: "full" };
+  }
+  function fakeOverlayLayer(): TalkingHeadLayer {
+    return {
+      id: "ov-1",
+      tag: OVERLAY_LAYER_TAG,
+      fileId: "f-overlay",
+      kind: "overlay",
+    };
+  }
+
+  const noClips = new Map();
+
+  it("emits overlayClip when section has overlay tag and overlay layer exists", () => {
+    const sections: ParsedSection[] = [{
+      lineNumber: 1, startTime: 30, endTime: 45,
+      tags: ["mower", OVERLAY_LAYER_TAG], scriptText: "x", durationMs: 15000,
+    }];
+    const out = matchSections(sections, noClips, undefined, [fakeOverlayLayer()], new Set());
+    expect(out[0]!.overlayClip).toBeDefined();
+    expect(out[0]!.overlayClip!.sourceSeekMs).toBe(30000);
+    expect(out[0]!.overlayClip!.fileId).toBe("f-overlay");
+    expect(out[0]!.overlayClip!.isOverlay).toBe(true);
+  });
+
+  it("skips overlay when section key is in disabledOverlayShots", () => {
+    const sections: ParsedSection[] = [{
+      lineNumber: 1, startTime: 30, endTime: 45,
+      tags: ["mower", OVERLAY_LAYER_TAG], scriptText: "x", durationMs: 15000,
+    }];
+    const out = matchSections(
+      sections,
+      noClips,
+      undefined,
+      [fakeOverlayLayer()],
+      new Set(["30000-45000"]),
+    );
+    expect(out[0]!.overlayClip).toBeUndefined();
+    // Base-tag "mower" still produces a "No B-roll found" warning, but the
+    // overlay path must be silent because the user explicitly disabled this shot.
+    expect(out[0]!.warnings.some((w) => /overlay/i.test(w))).toBe(false);
+  });
+
+  it("base = talking-head-full + overlay both emit", () => {
+    const sections: ParsedSection[] = [{
+      lineNumber: 1, startTime: 30, endTime: 45,
+      tags: [FULL_LAYER_TAG, OVERLAY_LAYER_TAG], scriptText: "x", durationMs: 15000,
+    }];
+    const out = matchSections(
+      sections,
+      noClips,
+      undefined,
+      [fakeFullLayer(), fakeOverlayLayer()],
+      new Set(),
+    );
+    expect(out[0]!.clips[0]!.fileId).toBe("f-full");
+    expect(out[0]!.clips[0]!.sourceSeekMs).toBe(30000);
+    expect(out[0]!.overlayClip).toBeDefined();
+    expect(out[0]!.overlayClip!.fileId).toBe("f-overlay");
   });
 });

@@ -46,7 +46,7 @@ const makeParsed = (tag: string, durationMs: number, line = 1): ParsedSection =>
   lineNumber: line,
   startTime: 0,
   endTime: durationMs / 1000,
-  tag,
+  tags: [tag],
   scriptText: "",
   durationMs,
 });
@@ -215,13 +215,13 @@ describe("preserveLocks — talking-head config", () => {
         lineNumber: 1,
         startTime: 5,
         endTime: 6,
-        tag: "ugc-head",
+        tags: ["ugc-head"],
         scriptText: "",
         durationMs: 1000,
       },
     ];
     const layers: TalkingHeadLayer[] = [
-      { id: "ugc", tag: "ugc-head", fileId: TH_LAYER_FILE_ID },
+      { id: "ugc", tag: "ugc-head", fileId: TH_LAYER_FILE_ID, kind: "full" },
     ];
     const result = preserveLocks(
       oldTimeline,
@@ -242,7 +242,7 @@ describe("preserveLocks — absolute positioning", () => {
     ];
     // New script: same tag/duration but moved to a different absolute position.
     const newSections: ParsedSection[] = [
-      { lineNumber: 1, startTime: 30, endTime: 35, tag: "hook", scriptText: "", durationMs: 5000 },
+      { lineNumber: 1, startTime: 30, endTime: 35, tags: ["hook"], scriptText: "", durationMs: 5000 },
     ];
     const map = new Map([["hook", [c1]]]);
 
@@ -255,7 +255,7 @@ describe("preserveLocks — absolute positioning", () => {
 
   it("auto-matched (non-preserved) entries also carry startMs/endMs from the new ParsedSection", () => {
     const newSections: ParsedSection[] = [
-      { lineNumber: 1, startTime: 5, endTime: 8, tag: "hook", scriptText: "", durationMs: 3000 },
+      { lineNumber: 1, startTime: 5, endTime: 8, tags: ["hook"], scriptText: "", durationMs: 3000 },
     ];
     const map = new Map([["hook", [makeClip("c1", "hook-01", 5000)]]]);
 

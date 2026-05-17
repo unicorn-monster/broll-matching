@@ -12,8 +12,25 @@ interface Props {
   playerSeekRef: MutableRefObject<((ms: number) => void) | null>;
 }
 
+/** Renders a disabled-shot key (`${startMs}-${endMs}`) as "M:SS.mmm → M:SS.mmm".
+ *  Falls back to the raw key for any unexpected format so the user never sees an
+ *  empty cell — better to leak an oddly-shaped key than swallow it silently. */
+function formatShotKey(key: string): string {
+  const [a, b] = key.split("-");
+  const startMs = Number(a);
+  const endMs = Number(b);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return key;
+  return `${formatMs(startMs)} → ${formatMs(endMs)}`;
+}
+
 export function TalkingHeadSectionInspector({ selectedSection, playerSeekRef }: Props) {
-  const { talkingHeadLayers, renameTalkingHeadLayer, removeTalkingHeadLayer } = useBuildState();
+  const {
+    talkingHeadLayers,
+    renameTalkingHeadLayer,
+    removeTalkingHeadLayer,
+    disabledOverlayShots,
+    restoreOverlayShot,
+  } = useBuildState();
   const layer = talkingHeadLayers.find((l) => l.tag === selectedSection.tag.toLowerCase());
 
   const [editing, setEditing] = useState(false);
@@ -136,6 +153,25 @@ export function TalkingHeadSectionInspector({ selectedSection, playerSeekRef }: 
           Preview slice
         </Button>
       </div>
+
+      {/* Disabled overlay shots — global list, restorable individually. Lives in the
+          talking-head inspector because it's the only surface that already cares about
+          overlay state; the per-shot disable trigger lives elsewhere on the timeline. */}
+      {disabledOverlayShots.size > 0 && (
+        <div className="rounded-md border border-border bg-background/40 p-3 space-y-2">
+          <p className="text-xs font-medium">Disabled overlay shots</p>
+          <div className="space-y-1">
+            {[...disabledOverlayShots].map((key) => (
+              <div key={key} className="flex justify-between items-center text-xs gap-2">
+                <span className="font-mono tabular-nums">{formatShotKey(key)}</span>
+                <Button size="sm" variant="ghost" onClick={() => restoreOverlayShot(key)}>
+                  Restore
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

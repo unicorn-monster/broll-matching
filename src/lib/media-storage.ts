@@ -1,7 +1,7 @@
 import { openDB, deleteDB, type IDBPDatabase } from "idb";
 
 const DB_NAME = "vsl-mix-n-match";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 export interface FolderRecord {
   id: string;
@@ -38,6 +38,12 @@ export interface TalkingHeadLayerRecord {
   createdAt: Date;
 }
 
+export interface MattedFileRecord {
+  id: string;
+  blob: Blob;
+  filename: string;
+}
+
 export type MediaDB = IDBPDatabase<unknown>;
 
 export async function openMediaDB(): Promise<MediaDB> {
@@ -61,6 +67,9 @@ export async function openMediaDB(): Promise<MediaDB> {
       }
       if (oldVersion < 2 && !db.objectStoreNames.contains("talkingHeadLayers")) {
         db.createObjectStore("talkingHeadLayers", { keyPath: "id" });
+      }
+      if (oldVersion < 3 && !db.objectStoreNames.contains("matted-files")) {
+        db.createObjectStore("matted-files", { keyPath: "id" });
       }
     },
   });
@@ -142,6 +151,25 @@ export async function renameFolder(id: string, name: string): Promise<void> {
     await tx.objectStore("folders").put({ ...existing, name });
   }
   await tx.done;
+  db.close();
+}
+
+export async function putMattedFile(rec: MattedFileRecord): Promise<void> {
+  const db = await openMediaDB();
+  await db.put("matted-files", rec);
+  db.close();
+}
+
+export async function getMattedFile(id: string): Promise<MattedFileRecord | undefined> {
+  const db = await openMediaDB();
+  const rec = (await db.get("matted-files", id)) as MattedFileRecord | undefined;
+  db.close();
+  return rec;
+}
+
+export async function deleteMattedFile(id: string): Promise<void> {
+  const db = await openMediaDB();
+  await db.delete("matted-files", id);
   db.close();
 }
 

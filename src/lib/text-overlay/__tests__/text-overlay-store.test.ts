@@ -16,7 +16,7 @@ function section(line: number, text: string, startMs: number, endMs: number): Pa
     lineNumber: line,
     startTime: startMs / 1000,
     endTime: endMs / 1000,
-    tag: "tag",
+    tags: ["tag"],
     scriptText: text,
     durationMs: endMs - startMs,
   };

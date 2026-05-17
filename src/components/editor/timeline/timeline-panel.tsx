@@ -10,6 +10,7 @@ import { TrackClips } from "./track-clips";
 import { TrackAudio } from "./track-audio";
 import { TrackTextOverlays } from "./track-text-overlays";
 import { TrackTalkingHeadLayers } from "./track-talking-head-layers";
+import { TrackOverlayShots } from "./track-overlay-shots";
 import { OverlayTracks } from "../overlay/overlay-tracks";
 import { useAudioKeyboard } from "../audio/use-audio-keyboard";
 
@@ -117,6 +118,7 @@ export function TimelinePanel() {
                 onToggleLock={toggleSectionLock}
               />
               <OverlayTracks pxPerSecond={effectivePxPerSec} />
+              <TrackOverlayShots pxPerSecond={effectivePxPerSec} />
               <TrackTalkingHeadLayers pxPerSecond={effectivePxPerSec} />
               <TrackClips
                 timeline={timeline}

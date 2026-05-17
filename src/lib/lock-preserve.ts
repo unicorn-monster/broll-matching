@@ -1,5 +1,5 @@
 import { matchSections, createMatchState, markUsed, type MatchedSection, type ClipMetadata } from "./auto-match";
-import type { ParsedSection } from "./script-parser";
+import { OVERLAY_TAG, type ParsedSection } from "./script-parser";
 import type { TalkingHeadLayer } from "@/lib/talking-head/talking-head-types";
 
 /**
@@ -29,6 +29,7 @@ export function preserveLocks(
   newSections: ParsedSection[],
   clipsByBaseName: Map<string, ClipMetadata[]>,
   talkingHeadLayers: TalkingHeadLayer[] = [],
+  disabledOverlayShots: Set<string> = new Set(),
 ): LockPreserveResult {
   const lockQueue = oldTimeline.filter((s) => s.userLocked);
   const newTimeline: MatchedSection[] = [];
@@ -37,7 +38,10 @@ export function preserveLocks(
 
   for (const [i, ns] of newSections.entries()) {
     const head = lockQueue[0];
-    const tagMatch = head ? head.tag.toLowerCase() === ns.tag.toLowerCase() : false;
+    // Lock match uses the *base* tag, not the overlay tag. Overlay opt-in is a
+    // per-shot toggle, not a tag-identity thing — it must not affect lock-match.
+    const nsTag = (ns.tags.find((t) => t !== OVERLAY_TAG) ?? "").toLowerCase();
+    const tagMatch = head ? head.tag.toLowerCase() === nsTag : false;
     // Guard against zero-duration old sections — division would be NaN/Infinity.
     const durOk =
       head && head.durationMs > 0
@@ -53,13 +57,12 @@ export function preserveLocks(
       const totalPickedMs = firstReal ? head.durationMs * firstReal.speedFactor : 0;
       const newSpeed =
         ns.durationMs > 0 && totalPickedMs > 0 ? totalPickedMs / ns.durationMs : 1;
-      const tagKey = ns.tag.toLowerCase();
       for (const c of head.clips) {
-        if (!c.isPlaceholder) markUsed(state, tagKey, c.clipId);
+        if (!c.isPlaceholder) markUsed(state, nsTag, c.clipId);
       }
       newTimeline.push({
         sectionIndex: i,
-        tag: ns.tag,
+        tag: nsTag,
         // Preserved locks bind to the *new* line's absolute window — the picks travel
         // with the user, the position comes from the freshly-parsed script.
         startMs: ns.startTime * 1000,
@@ -75,7 +78,13 @@ export function preserveLocks(
       preservedCount++;
     } else {
       // matchSections returns one entry per input section, so this is always defined.
-      const matched = matchSections([ns], clipsByBaseName, state, talkingHeadLayers)[0]!;
+      const matched = matchSections(
+        [ns],
+        clipsByBaseName,
+        state,
+        talkingHeadLayers,
+        disabledOverlayShots,
+      )[0]!;
       newTimeline.push({ ...matched, sectionIndex: i });
     }
   }

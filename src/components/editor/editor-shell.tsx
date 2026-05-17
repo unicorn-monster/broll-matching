@@ -8,7 +8,7 @@ import { useMediaPool } from "@/state/media-pool";
 import { DeleteFolderDialog } from "@/components/broll/delete-folder-dialog";
 import { AudioPill } from "./toolbar/audio-pill";
 import { ScriptPill } from "./toolbar/script-pill";
-import { TalkingHeadLayersButton } from "./toolbar/talking-head-layers-button";
+import { TalkingHeadPills } from "./toolbar/talking-head-pills";
 import { ExportButton } from "./toolbar/export-button";
 import { ShuffleButton } from "./toolbar/shuffle-button";
 import { GenerateCaptionsButton } from "./toolbar/generate-captions-button";
@@ -95,7 +95,7 @@ export function EditorShell() {
         <div className="flex items-center gap-2">
           <AudioPill />
           <ScriptPill />
-          <TalkingHeadLayersButton />
+          <TalkingHeadPills />
         </div>
         <div className="ml-auto flex items-center gap-2">
           <GenerateCaptionsButton />

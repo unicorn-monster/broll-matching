@@ -80,6 +80,17 @@ export function RenderTrigger({ audioFile, audioDurationMs, timeline, includeCap
         if (file) fd.append("clips", new File([file], layer.fileId));
       }
 
+      // Append every overlay-kind layer's file directly. The uploaded file is
+      // already pre-matted (e.g. CapCut HEVC-alpha mp4) — ffmpeg's overlay filter
+      // composes its alpha at render time. The server (api/render) reads the
+      // `matted-clips` field and keys files by File.name, which must equal
+      // `layer.fileId` — the same id auto-match places in `section.overlayClip.fileId`.
+      for (const layer of talkingHeadLayers) {
+        if (layer.kind !== "overlay") continue;
+        const file = talkingHeadFiles.get(layer.fileId);
+        if (file) fd.append("matted-clips", new File([file], layer.fileId));
+      }
+
       // Caption payload: PNG per visible text overlay + JSON metadata (timing + pixel position).
       // PNGs are cropped to each overlay's measured box, so ffmpeg `overlay=x:y` places them
       // exactly where the editor's canvas preview shows them. Dimensions match `outputSize`

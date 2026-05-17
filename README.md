@@ -415,6 +415,15 @@ Commands are defined in `.claude/commands/`:
 
 You can customize these commands or add new ones following the [Claude Code documentation](https://docs.anthropic.com/en/docs/claude-code).
 
+### Talking-head overlay (cutout PIP)
+
+Composite a transparent talking-head over b-roll in the bottom-right corner.
+
+- **Pre-processing required**: tách nền the talking-head clip yourself (CapCut → export as HEVC Alpha mp4, or any tool that produces video with alpha channel). The app does NOT do background removal — upload the already-matted file directly.
+- **Script syntax**: tag sections with `<base>, talking-head-overlay` (e.g. `mower, talking-head-overlay`) to enable the cutout for that section.
+- **Per-shot disable**: click a shot on the overlay row and press Delete to skip it without editing the script.
+- **Supported formats**: any video format Chrome can decode (mp4 with HEVC alpha, webm with VP9 alpha, etc.). ffmpeg server-side handles the rest.
+
 ## 🤝 Contributing
 
 1. Fork this repository

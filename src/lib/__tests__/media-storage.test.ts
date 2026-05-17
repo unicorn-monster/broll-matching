@@ -10,6 +10,9 @@ import {
   removeFolder,
   renameFolder,
   resetAll,
+  putMattedFile,
+  getMattedFile,
+  deleteMattedFile,
   type FolderRecord,
   type ClipRecord,
   type FileRecord,
@@ -47,7 +50,15 @@ describe("media-storage", () => {
   it("opens database with all required object stores", async () => {
     const db = await openMediaDB();
     const names = Array.from(db.objectStoreNames).sort();
-    expect(names).toEqual(["audio", "clips", "files", "folders", "meta", "talkingHeadLayers"]);
+    expect(names).toEqual([
+      "audio",
+      "clips",
+      "files",
+      "folders",
+      "matted-files",
+      "meta",
+      "talkingHeadLayers",
+    ]);
     db.close();
   });
 });
@@ -107,6 +118,21 @@ describe("renameFolder", () => {
     const clips = await getAllClips();
     expect(folders[0]!.name).toBe("new");
     expect(clips[0]!.brollName).toBe("x-01");
+  });
+});
+
+describe("matted-files store (v3)", () => {
+  it("round-trips a matted webm blob", async () => {
+    const blob = new Blob([new Uint8Array([1, 2, 3])], { type: "video/webm" });
+    await putMattedFile({ id: "matted-1", blob, filename: "matted-1.webm" });
+    const got = await getMattedFile("matted-1");
+    expect(got).toBeDefined();
+    expect(got!.filename).toBe("matted-1.webm");
+    expect(await got!.blob.arrayBuffer()).toEqual(await blob.arrayBuffer());
+  });
+
+  it("delete is idempotent on missing id", async () => {
+    await expect(deleteMattedFile("nope")).resolves.not.toThrow();
   });
 });
 
