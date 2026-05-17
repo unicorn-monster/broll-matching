@@ -1,98 +1,96 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-  addLayer,
-  removeLayer,
-  renameLayer,
+  addOrReplaceLayer,
   findLayerByTag,
-  migrateFromLegacyTh,
+  getLayerByKind,
+  removeLayer,
+  setMattingProgress,
+  setMattingStatus,
 } from "../talking-head-store";
+import {
+  FULL_LAYER_TAG,
+  OVERLAY_LAYER_TAG,
+} from "../talking-head-types";
 
-describe("addLayer", () => {
-  it("returns { ok: true, layers } when tag is unique", () => {
-    const result = addLayer([], { tag: "doctor", file: new File([], "doctor.mp4") });
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.layers).toHaveLength(1);
-    expect(result.layers[0]!.tag).toBe("doctor");
-    expect(result.layers[0]!.fileId.startsWith("__th_layer__")).toBe(true);
+function fakeFile(name = "x.mp4"): File {
+  return new File([new Uint8Array([0])], name, { type: "video/mp4" });
+}
+
+describe("addOrReplaceLayer (kind-aware)", () => {
+  it("adds a full layer when empty", () => {
+    const r = addOrReplaceLayer([], { kind: "full", file: fakeFile() });
+    expect(r.layers).toHaveLength(1);
+    expect(r.layers[0]!.kind).toBe("full");
+    expect(r.layers[0]!.tag).toBe(FULL_LAYER_TAG);
   });
 
-  it("lowercases and trims the tag", () => {
-    const result = addLayer([], { tag: "  Doctor  ", file: new File([], "x.mp4") });
-    expect(result.ok && result.layers[0]!.tag).toBe("doctor");
+  it("replaces an existing full layer (keeping at most one)", () => {
+    const first = addOrReplaceLayer([], { kind: "full", file: fakeFile("a.mp4") });
+    const second = addOrReplaceLayer(
+      first.layers,
+      { kind: "full", file: fakeFile("b.mp4") },
+      first.files,
+    );
+    expect(second.layers).toHaveLength(1);
+    expect(second.layers[0]!.id).not.toBe(first.layers[0]!.id);
+    expect(second.files.has(first.layers[0]!.fileId)).toBe(false);
   });
 
-  it("returns { ok: false } when tag already in use (case-insensitive)", () => {
-    const seed = addLayer([], { tag: "doc", file: new File([], "a.mp4") });
-    if (!seed.ok) throw new Error("seed failed");
-    const result = addLayer(seed.layers, { tag: "DOC", file: new File([], "b.mp4") });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.reason).toBe("duplicate-tag");
+  it("adds overlay layer with mattingStatus='processing'", () => {
+    const r = addOrReplaceLayer([], { kind: "overlay", file: fakeFile() });
+    expect(r.layers[0]!.kind).toBe("overlay");
+    expect(r.layers[0]!.tag).toBe(OVERLAY_LAYER_TAG);
+    expect(r.layers[0]!.mattingStatus).toBe("processing");
   });
 
-  it("rejects empty tag", () => {
-    const result = addLayer([], { tag: "   ", file: new File([], "x.mp4") });
-    expect(result.ok).toBe(false);
+  it("full and overlay coexist independently", () => {
+    const r1 = addOrReplaceLayer([], { kind: "full", file: fakeFile() });
+    const r2 = addOrReplaceLayer(r1.layers, { kind: "overlay", file: fakeFile() }, r1.files);
+    expect(r2.layers).toHaveLength(2);
+    expect(getLayerByKind(r2.layers, "full")).toBeDefined();
+    expect(getLayerByKind(r2.layers, "overlay")).toBeDefined();
+  });
+});
+
+describe("setMattingStatus / setMattingProgress", () => {
+  it("transitions overlay layer processing → ready and clears progress", () => {
+    const r = addOrReplaceLayer([], { kind: "overlay", file: fakeFile() });
+    const id = r.layers[0]!.id;
+    const withProgress = setMattingProgress(r.layers, id, { framesDone: 50, totalFrames: 100 });
+    expect(getLayerByKind(withProgress, "overlay")!.mattingProgress!.framesDone).toBe(50);
+
+    const ready = setMattingStatus(withProgress, id, "ready", "matted-xyz");
+    const overlay = getLayerByKind(ready, "overlay")!;
+    expect(overlay.mattingStatus).toBe("ready");
+    expect(overlay.mattedFileId).toBe("matted-xyz");
+    expect(overlay.mattingProgress).toBeUndefined();
+  });
+
+  it("transitions to failed without setting mattedFileId", () => {
+    const r = addOrReplaceLayer([], { kind: "overlay", file: fakeFile() });
+    const failed = setMattingStatus(r.layers, r.layers[0]!.id, "failed");
+    expect(getLayerByKind(failed, "overlay")!.mattingStatus).toBe("failed");
+    expect(getLayerByKind(failed, "overlay")!.mattedFileId).toBeUndefined();
   });
 });
 
 describe("removeLayer", () => {
-  it("removes by id", () => {
-    const seed = addLayer([], { tag: "a", file: new File([], "1.mp4") });
-    if (!seed.ok) throw new Error("seed failed");
-    const out = removeLayer(seed.layers, seed.layers[0]!.id);
-    expect(out).toHaveLength(0);
-  });
-});
+  it("removes the layer and its files (both original and matted)", () => {
+    const r = addOrReplaceLayer([], { kind: "overlay", file: fakeFile() });
+    const ready = setMattingStatus(r.layers, r.layers[0]!.id, "ready", "matted-xyz");
+    const filesWithMatted = new Map(r.files);
+    filesWithMatted.set("matted-xyz", fakeFile("matted.webm"));
 
-describe("renameLayer", () => {
-  it("changes tag when new tag is unique", () => {
-    const seed = addLayer([], { tag: "a", file: new File([], "1.mp4") });
-    if (!seed.ok) throw new Error("seed failed");
-    const result = renameLayer(seed.layers, seed.layers[0]!.id, "b");
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.layers[0]!.tag).toBe("b");
-  });
-
-  it("rejects rename to a tag used by another layer", () => {
-    const s1 = addLayer([], { tag: "a", file: new File([], "1.mp4") });
-    if (!s1.ok) throw new Error();
-    const s2 = addLayer(s1.layers, { tag: "b", file: new File([], "2.mp4") });
-    if (!s2.ok) throw new Error();
-    const result = renameLayer(s2.layers, s2.layers[1]!.id, "A");
-    expect(result.ok).toBe(false);
-  });
-
-  it("allows rename when the only conflict is the same layer", () => {
-    const seed = addLayer([], { tag: "a", file: new File([], "1.mp4") });
-    if (!seed.ok) throw new Error();
-    const result = renameLayer(seed.layers, seed.layers[0]!.id, "A");
-    expect(result.ok).toBe(true);
+    const after = removeLayer(ready, r.layers[0]!.id, filesWithMatted);
+    expect(after.layers).toHaveLength(0);
+    expect(after.files.size).toBe(0);
   });
 });
 
 describe("findLayerByTag", () => {
   it("matches lowercased tag", () => {
-    const seed = addLayer([], { tag: "doc", file: new File([], "1.mp4") });
-    if (!seed.ok) throw new Error();
-    expect(findLayerByTag(seed.layers, "Doc")?.tag).toBe("doc");
-    expect(findLayerByTag(seed.layers, "missing")).toBeUndefined();
-  });
-});
-
-describe("migrateFromLegacyTh", () => {
-  it("returns empty array when no legacy state", () => {
-    expect(migrateFromLegacyTh(null, "")).toEqual({ layers: [], files: new Map() });
-  });
-
-  it("returns one layer when legacy file + tag are present", () => {
-    const file = new File([], "legacy.mp4");
-    const result = migrateFromLegacyTh(file, "talking-head");
-    expect(result.layers).toHaveLength(1);
-    expect(result.layers[0]!.tag).toBe("talking-head");
-    expect(result.files.size).toBe(1);
-    expect(result.files.get(result.layers[0]!.fileId)).toBe(file);
+    const r = addOrReplaceLayer([], { kind: "full", file: fakeFile() });
+    expect(findLayerByTag(r.layers, FULL_LAYER_TAG.toUpperCase())?.tag).toBe(FULL_LAYER_TAG);
+    expect(findLayerByTag(r.layers, "missing")).toBeUndefined();
   });
 });

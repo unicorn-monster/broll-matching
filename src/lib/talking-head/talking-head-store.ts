@@ -1,76 +1,115 @@
-import { makeLayerFileId, type TalkingHeadLayer } from "./talking-head-types";
+import {
+  FULL_LAYER_TAG,
+  makeLayerFileId,
+  OVERLAY_LAYER_TAG,
+  type MattingProgress,
+  type MattingStatus,
+  type TalkingHeadKind,
+  type TalkingHeadLayer,
+} from "./talking-head-types";
 
 function newId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
   return Math.random().toString(36).slice(2);
 }
 
-function normalize(tag: string): string {
-  return tag.trim().toLowerCase();
+function tagForKind(kind: TalkingHeadKind): string {
+  return kind === "full" ? FULL_LAYER_TAG : OVERLAY_LAYER_TAG;
 }
 
 export type StoreOk = { ok: true; layers: TalkingHeadLayer[]; files: Map<string, File> };
-export type StoreErr = { ok: false; reason: "duplicate-tag" | "empty-tag" | "not-found" };
-export type StoreResult = StoreOk | StoreErr;
+export type RemoveResult = { layers: TalkingHeadLayer[]; files: Map<string, File> };
 
-/** Rename does not touch the files Map; the return shape omits it so callers cannot
- *  accidentally clobber their in-memory file mirror. */
-export type RenameOk = { ok: true; layers: TalkingHeadLayer[] };
-export type RenameResult = RenameOk | StoreErr;
-
-export function addLayer(
+/** Adds a new layer of the given kind. If one already exists with that kind,
+ *  it is REPLACED — both the layer record and any files (original mp4 +
+ *  matted webm) belonging to the old one are removed. */
+export function addOrReplaceLayer(
   layers: TalkingHeadLayer[],
-  args: { tag: string; file: File; label?: string },
+  args: { kind: TalkingHeadKind; file: File; label?: string },
   filesArg?: Map<string, File>,
-): StoreResult {
-  const tag = normalize(args.tag);
-  if (tag.length === 0) return { ok: false, reason: "empty-tag" };
-  if (layers.some((l) => l.tag === tag)) return { ok: false, reason: "duplicate-tag" };
+): StoreOk {
+  const existing = layers.find((l) => l.kind === args.kind);
+  const remainingLayers = existing ? layers.filter((l) => l.id !== existing.id) : layers;
+  const files = new Map(filesArg);
+  if (existing) {
+    files.delete(existing.fileId);
+    if (existing.mattedFileId) files.delete(existing.mattedFileId);
+  }
+
   const id = newId();
   const fileId = makeLayerFileId(id);
-  const layer: TalkingHeadLayer = { id, tag, fileId, ...(args.label ? { label: args.label } : {}) };
-  const files = new Map(filesArg);
-  files.set(fileId, args.file);
-  return { ok: true, layers: [...layers, layer], files };
-}
-
-export function removeLayer(layers: TalkingHeadLayer[], id: string): TalkingHeadLayer[] {
-  return layers.filter((l) => l.id !== id);
-}
-
-export function renameLayer(
-  layers: TalkingHeadLayer[],
-  id: string,
-  newTag: string,
-): RenameResult {
-  const tag = normalize(newTag);
-  if (tag.length === 0) return { ok: false, reason: "empty-tag" };
-  const target = layers.find((l) => l.id === id);
-  if (!target) return { ok: false, reason: "not-found" };
-  if (layers.some((l) => l.id !== id && l.tag === tag)) return { ok: false, reason: "duplicate-tag" };
-  return {
-    ok: true,
-    layers: layers.map((l) => (l.id === id ? { ...l, tag } : l)),
+  const layer: TalkingHeadLayer = {
+    id,
+    tag: tagForKind(args.kind),
+    fileId,
+    kind: args.kind,
+    ...(args.label ? { label: args.label } : {}),
+    ...(args.kind === "overlay" ? { mattingStatus: "processing" as MattingStatus } : {}),
   };
+  files.set(fileId, args.file);
+  return { ok: true, layers: [...remainingLayers, layer], files };
+}
+
+export function getLayerByKind(
+  layers: TalkingHeadLayer[],
+  kind: TalkingHeadKind,
+): TalkingHeadLayer | undefined {
+  return layers.find((l) => l.kind === kind);
 }
 
 export function findLayerByTag(
   layers: TalkingHeadLayer[],
   tag: string,
 ): TalkingHeadLayer | undefined {
-  const k = normalize(tag);
+  const k = tag.trim().toLowerCase();
   return layers.find((l) => l.tag === k);
 }
 
-export function migrateFromLegacyTh(
-  legacyFile: File | null,
-  legacyTag: string,
-): { layers: TalkingHeadLayer[]; files: Map<string, File> } {
-  if (!legacyFile || legacyTag.trim().length === 0) return { layers: [], files: new Map() };
-  const id = newId();
-  const fileId = makeLayerFileId(id);
+export function removeLayer(
+  layers: TalkingHeadLayer[],
+  id: string,
+  filesArg?: Map<string, File>,
+): RemoveResult {
+  const target = layers.find((l) => l.id === id);
+  const files = new Map(filesArg);
+  if (target) {
+    files.delete(target.fileId);
+    if (target.mattedFileId) files.delete(target.mattedFileId);
+  }
   return {
-    layers: [{ id, tag: normalize(legacyTag), fileId }],
-    files: new Map([[fileId, legacyFile]]),
+    layers: layers.filter((l) => l.id !== id),
+    files,
   };
+}
+
+export function setMattingStatus(
+  layers: TalkingHeadLayer[],
+  id: string,
+  status: MattingStatus,
+  mattedFileId?: string,
+): TalkingHeadLayer[] {
+  return layers.map((l) => {
+    if (l.id !== id) return l;
+    const next: TalkingHeadLayer = { ...l, mattingStatus: status };
+    if (status === "ready" && mattedFileId) next.mattedFileId = mattedFileId;
+    if (status !== "processing") delete next.mattingProgress;
+    return next;
+  });
+}
+
+export function setMattingProgress(
+  layers: TalkingHeadLayer[],
+  id: string,
+  progress: MattingProgress,
+): TalkingHeadLayer[] {
+  return layers.map((l) => (l.id === id ? { ...l, mattingProgress: progress } : l));
+}
+
+/** Backfills `kind: 'full'` on any layer read from older IDB records that
+ *  pre-date the kind field. Idempotent. */
+export function normalizeLegacyLayer(
+  layer: TalkingHeadLayer & { kind?: TalkingHeadKind },
+): TalkingHeadLayer {
+  if (layer.kind) return layer;
+  return { ...layer, kind: "full", tag: FULL_LAYER_TAG };
 }
