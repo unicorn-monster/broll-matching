@@ -3,6 +3,7 @@
 import { useEffect, useState, type MutableRefObject } from "react";
 import { Trash2, Pencil, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { useBuildState } from "@/components/build/build-state-context";
 import { formatMs } from "@/lib/format-time";
 import type { MatchedSection } from "@/lib/auto-match";
@@ -12,9 +13,33 @@ interface Props {
   playerSeekRef: MutableRefObject<((ms: number) => void) | null>;
 }
 
+/** Renders a disabled-shot key (`${startMs}-${endMs}`) as "M:SS.mmm → M:SS.mmm".
+ *  Falls back to the raw key for any unexpected format so the user never sees an
+ *  empty cell — better to leak an oddly-shaped key than swallow it silently. */
+function formatShotKey(key: string): string {
+  const [a, b] = key.split("-");
+  const startMs = Number(a);
+  const endMs = Number(b);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return key;
+  return `${formatMs(startMs)} → ${formatMs(endMs)}`;
+}
+
 export function TalkingHeadSectionInspector({ selectedSection, playerSeekRef }: Props) {
-  const { talkingHeadLayers, renameTalkingHeadLayer, removeTalkingHeadLayer } = useBuildState();
+  const {
+    talkingHeadLayers,
+    renameTalkingHeadLayer,
+    removeTalkingHeadLayer,
+    retryMatting,
+    disabledOverlayShots,
+    restoreOverlayShot,
+  } = useBuildState();
   const layer = talkingHeadLayers.find((l) => l.tag === selectedSection.tag.toLowerCase());
+
+  // Pull the singleton overlay layer directly. The selected section may be a B-roll shot
+  // with an overlay applied (its `tag` is the B-roll base tag, not OVERLAY_LAYER_TAG),
+  // so we can't rely on the tag-based `layer` lookup above to surface overlay state.
+  const overlayLayer = talkingHeadLayers.find((l) => l.kind === "overlay");
+  const sectionUsesOverlay = !!selectedSection.overlayClip;
 
   const [editing, setEditing] = useState(false);
   const [draftTag, setDraftTag] = useState(layer?.tag ?? "");
@@ -136,6 +161,48 @@ export function TalkingHeadSectionInspector({ selectedSection, playerSeekRef }: 
           Preview slice
         </Button>
       </div>
+
+      {/* Matting status for the overlay layer — shown only when this section actually
+          uses the overlay (a B-roll section with an overlayClip, or a pure overlay slice). */}
+      {sectionUsesOverlay && overlayLayer && (
+        <div className="rounded-md border border-border bg-background/40 p-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <p className="text-sm">Matting:</p>
+            <Badge variant={overlayLayer.mattingStatus === "failed" ? "destructive" : "secondary"}>
+              {overlayLayer.mattingStatus ?? "unknown"}
+            </Badge>
+          </div>
+          {overlayLayer.mattingStatus === "processing" && overlayLayer.mattingProgress && (
+            <p className="text-xs text-muted-foreground tabular-nums">
+              {overlayLayer.mattingProgress.framesDone} / {overlayLayer.mattingProgress.totalFrames} frames
+            </p>
+          )}
+          {overlayLayer.mattingStatus === "failed" && (
+            <Button size="sm" onClick={() => retryMatting(overlayLayer.id)}>
+              Retry matting
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* Disabled overlay shots — global list, restorable individually. Lives in the
+          talking-head inspector because it's the only surface that already cares about
+          overlay state; the per-shot disable trigger lives elsewhere on the timeline. */}
+      {disabledOverlayShots.size > 0 && (
+        <div className="rounded-md border border-border bg-background/40 p-3 space-y-2">
+          <p className="text-xs font-medium">Disabled overlay shots</p>
+          <div className="space-y-1">
+            {[...disabledOverlayShots].map((key) => (
+              <div key={key} className="flex justify-between items-center text-xs gap-2">
+                <span className="font-mono tabular-nums">{formatShotKey(key)}</span>
+                <Button size="sm" variant="ghost" onClick={() => restoreOverlayShot(key)}>
+                  Restore
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
