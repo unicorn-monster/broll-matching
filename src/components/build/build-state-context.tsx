@@ -141,9 +141,12 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
   // Spawns the matting worker for an overlay layer and wires it into state. Pure helper —
   // the layer record itself is created by addOrReplaceLayer before this runs.
   const startMatting = useCallback((layer: TalkingHeadLayer, file: File) => {
-    const worker = new Worker(new URL("../../workers/matting-worker.ts", import.meta.url), {
-      type: "module",
-    });
+    // NOTE: the matting worker is pre-bundled by esbuild as IIFE (CLASSIC worker) to
+    // /public/matting-worker.bundle.js (see `pnpm build:matting-worker`). Two reasons:
+    //   1. Next.js dev bundlers (Turbopack/Webpack) hang chunking the heavy MediaPipe deps.
+    //   2. MediaPipe's wasm loader uses `importScripts()` which fails in module workers
+    //      ("Module scripts don't support importScripts()"). Classic worker is required.
+    const worker = new Worker("/matting-worker.bundle.js");
     mattingWorkers.current.set(layer.id, worker);
     worker.onmessage = async (e: MessageEvent) => {
       const data = e.data as

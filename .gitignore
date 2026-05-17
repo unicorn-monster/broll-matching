@@ -64,4 +64,5 @@ nul
 /public/ffmpeg/
 
 # demo screenshots
-/demo-*.png
+/demo-*.pngpublic/test-overlay-fixture.mp4
+public/matting-worker.bundle.js

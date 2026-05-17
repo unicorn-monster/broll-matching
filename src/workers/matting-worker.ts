@@ -1,6 +1,9 @@
 // src/workers/matting-worker.ts
 //
 // Task 11 (talking-head-overlay): browser-side background matting worker.
+
+// Top-of-file debug marker — fires as soon as the worker module loads.
+console.log("[matting-worker] module loaded at", new Date().toISOString());
 //
 // Pipeline:  source.mp4 (Blob) ──► MP4Box demux ──► VideoDecoder ──► VideoFrame
 //                                                                       │
@@ -50,7 +53,16 @@ interface CodecConfigBox {
 interface MinimalTrakBox {
   mdia: { minf: { stbl: { stsd: { entries: ReadonlyArray<VisualSampleEntry> } } } };
 }
-import { FilesetResolver, ImageSegmenter, type MPMask } from "@mediapipe/tasks-vision";
+// MediaPipe is loaded dynamically at runtime (see runMatting) rather than imported
+// statically — esbuild's bundling of @mediapipe/tasks-vision breaks the Emscripten
+// WASM initialization ("ModuleFactory not set" error). At runtime the worker fetches
+// the ESM bundle from /public/mediapipe/vision_bundle.mjs, which keeps the package's
+// own module-loading invariants intact.
+import type { FilesetResolver as FilesetResolverT, ImageSegmenter as ImageSegmenterT, MPMask } from "@mediapipe/tasks-vision";
+type MediaPipeModule = {
+  FilesetResolver: typeof FilesetResolverT;
+  ImageSegmenter: typeof ImageSegmenterT;
+};
 
 // ---------------------------------------------------------------------------
 // Message protocol
@@ -67,6 +79,14 @@ type Outbound =
 
 let aborted = false;
 
+// Debug helper that emits progress sentinels with a `debug` label. Useful during dev;
+// kept as a no-op in production by setting DEBUG_WORKER=false at build time.
+const DEBUG_WORKER = false;
+function debug(step: string, extra?: Record<string, unknown>) {
+  if (!DEBUG_WORKER) return;
+  (self as unknown as Worker).postMessage({ type: "progress", framesDone: -1, totalFrames: -1, debug: step, ...extra });
+}
+
 self.addEventListener("message", async (ev: MessageEvent<Inbound>) => {
   const msg = ev.data;
   if (msg.type === "abort") {
@@ -78,6 +98,7 @@ self.addEventListener("message", async (ev: MessageEvent<Inbound>) => {
     const blob = await runMatting(msg.sourceBlob);
     if (!aborted) post({ type: "done", mattedBlob: blob });
   } catch (e: unknown) {
+    debug("caught-error", { err: e instanceof Error ? e.message : String(e) });
     post({ type: "failed", message: e instanceof Error ? e.message : String(e) });
   }
 });
@@ -91,34 +112,63 @@ function post(m: Outbound) {
 // ---------------------------------------------------------------------------
 
 async function runMatting(sourceBlob: Blob): Promise<Blob> {
-  // 1. MediaPipe selfie segmenter (GPU-backed).
-  const vision = await FilesetResolver.forVisionTasks(
-    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm",
-  );
+  debug("runMatting-start", { sizeMB: (sourceBlob.size / 1024 / 1024) | 0 });
+  const origin = (self as unknown as { location: { origin: string } }).location.origin;
+  debug("origin-resolved", { origin });
+  const mpUrl = `${origin}/mediapipe/vision_bundle.mjs`;
+  debug("before-mp-import", { mpUrl });
+  const mp = (await import(mpUrl)) as unknown as MediaPipeModule;
+  debug("after-mp-import", { keys: Object.keys(mp).slice(0, 5) });
+  const { FilesetResolver, ImageSegmenter } = mp;
+  debug("before-fileset-resolver");
+  const vision = await FilesetResolver.forVisionTasks(`${origin}/mediapipe/wasm`);
+  debug("after-fileset-resolver");
+  debug("before-segmenter-create");
   const segmenter = await ImageSegmenter.createFromOptions(vision, {
     baseOptions: {
-      modelAssetPath:
-        "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/1/selfie_segmenter.tflite",
+      // Local model — googleapis CDN can hang in some networks.
+      modelAssetPath: `${origin}/mediapipe/selfie_segmenter.tflite`,
       delegate: "GPU",
     },
     outputCategoryMask: true,
     outputConfidenceMasks: false,
     runningMode: "VIDEO",
   });
+  debug("after-segmenter-create");
 
   // 2. Demux source mp4: build a VideoDecoderConfig from the moov.
+  debug("before-blob-arraybuffer");
   const rawBuffer = await sourceBlob.arrayBuffer();
+  debug("after-blob-arraybuffer", { bytes: rawBuffer.byteLength });
   const mp4Buffer = MP4BoxBuffer.fromArrayBuffer(rawBuffer, 0);
+  debug("after-mp4buffer-wrap");
   const mp4: ISOFile = createFile();
+  debug("after-createFile");
 
   let totalFrames = 0;
   let width = 0;
   let height = 0;
   let trackId = 0;
 
+  // Sample callback must be registered BEFORE mp4.start() — mp4box doesn't buffer
+  // samples for callbacks that don't yet exist. We capture a Deferred and resolve
+  // it from inside onSamples below.
+  let onSamplesCb: ((samples: ReadonlyArray<{ data: ArrayBuffer | null; cts: number; duration: number; timescale: number; is_sync: boolean; number: number }>) => void) | null = null;
+  let placeholderCalls = 0;
+  mp4.onSamples = (_id, _user, samples) => {
+    placeholderCalls++;
+    if (placeholderCalls === 1) debug("placeholder-onSamples-FIRST", { samples: samples.length, hasCb: !!onSamplesCb });
+    else if (placeholderCalls % 5 === 0) debug("placeholder-onSamples-batch", { call: placeholderCalls, samples: samples.length, hasCb: !!onSamplesCb });
+    if (onSamplesCb) onSamplesCb(samples as unknown as Parameters<NonNullable<typeof onSamplesCb>>[0]);
+  };
+
   const decoderConfig = await new Promise<VideoDecoderConfig>((resolve, reject) => {
-    mp4.onError = (_module, message) => reject(new Error(`mp4box: ${message}`));
+    mp4.onError = (_module, message) => {
+      debug("mp4-onError", { message });
+      reject(new Error(`mp4box: ${message}`));
+    };
     mp4.onReady = (info) => {
+      debug("mp4-onReady", { trackCount: info.videoTracks.length });
       const track = info.videoTracks[0];
       if (!track) {
         reject(new Error("No video track in source mp4"));
@@ -132,11 +182,14 @@ async function runMatting(sourceBlob: Blob): Promise<Blob> {
       width = track.video.width;
       height = track.video.height;
       trackId = track.id;
+      console.log("[matting] track info:", { id: track.id, codec: track.codec, width, height, totalFrames });
       const trak = mp4.getTrackById(track.id) as unknown as MinimalTrakBox;
       let description: Uint8Array;
       try {
         description = buildCodecDescription(trak);
+        console.log("[matting] codec description built, length:", description.length);
       } catch (e) {
+        console.error("[matting] buildCodecDescription failed:", e);
         reject(e instanceof Error ? e : new Error(String(e)));
         return;
       }
@@ -147,13 +200,19 @@ async function runMatting(sourceBlob: Blob): Promise<Blob> {
         description,
       });
       // Request samples now that onReady has resolved the codec config.
-      mp4.setExtractionOptions(track.id, undefined, { nbSamples: 100 });
-      mp4.start();
+      // NOTE: we do NOT call setExtractionOptions + start() here. Sample extraction
+      // is deferred until the real onSamples handler is registered in the next phase —
+      // otherwise the first batches fire before the handler exists and are dropped.
     };
+    debug("before-mp4.appendBuffer");
     mp4.appendBuffer(mp4Buffer);
+    debug("after-mp4.appendBuffer");
     mp4.flush();
+    debug("after-mp4.flush");
   });
+  console.log("[matting] decoderConfig resolved:", decoderConfig.codec);
 
+  debug("before-muxer-create", { width, height });
   // 3. WebM muxer with VP9-alpha video track.
   const muxer = new Muxer({
     target: new ArrayBufferTarget(),
@@ -175,6 +234,7 @@ async function runMatting(sourceBlob: Blob): Promise<Blob> {
       encoderError = e;
     },
   });
+  debug("before-encoder-configure");
   encoder.configure({
     codec: "vp09.00.10.08",
     width,
@@ -183,6 +243,7 @@ async function runMatting(sourceBlob: Blob): Promise<Blob> {
     framerate: 30,
     alpha: "keep",
   });
+  debug("after-encoder-configure");
 
   // 5. VideoDecoder — feeds raw frames into the segmenter, then re-encodes
   // the I420A composite. We serialize per-frame work behind a tail promise to
@@ -216,12 +277,19 @@ async function runMatting(sourceBlob: Blob): Promise<Blob> {
       decoderError = e;
     },
   });
+  debug("before-decoder-configure");
   decoder.configure(decoderConfig);
+  debug("after-decoder-configure");
 
+  debug("entering-sample-pump-promise", { totalFrames });
   // 6. Pump samples → decoder until we've fed the full sample count.
   await new Promise<void>((resolve, reject) => {
     let samplesFed = 0;
-    mp4.onSamples = (_id, _user, samples) => {
+    let batchCount = 0;
+    onSamplesCb = (samples) => {
+      batchCount++;
+      if (batchCount === 1) debug("first-onSamples-batch", { samples: samples.length });
+      else if (batchCount % 10 === 0) debug("onSamples-batch", { batchCount, samplesFed });
       for (const s of samples) {
         if (aborted) break;
         const data = s.data;
@@ -247,9 +315,13 @@ async function runMatting(sourceBlob: Blob): Promise<Blob> {
     if (totalFrames === 0) {
       reject(new Error("Source mp4 reports zero video samples"));
     }
-    // Ensure mp4box drains any buffered samples (we already appended the
-    // entire buffer above before this Promise was constructed).
-    mp4.flush();
+    // Now that onSamplesCb is bound, kick off extraction. mp4box will fire
+    // onSamples in batches of `nbSamples`.
+    debug("calling-setExtractionOptions+start", { trackId });
+    // Try without options to use mp4box defaults
+    mp4.setExtractionOptions(trackId);
+    mp4.start();
+    debug("called-start");
     // Reference trackId so the linter knows we deliberately captured it for
     // future extractionOptions calls if we ever stream rather than batch-load.
     void trackId;
@@ -315,7 +387,7 @@ function buildCodecDescription(trak: MinimalTrakBox): Uint8Array {
 
 async function segmentToAlphaFrame(
   frame: VideoFrame,
-  segmenter: ImageSegmenter,
+  segmenter: ImageSegmenterT,
   width: number,
   height: number,
 ): Promise<VideoFrame> {
@@ -333,7 +405,7 @@ async function segmentToAlphaFrame(
   // out with `.slice()` before resolving so it survives past that boundary.
   const mask = await new Promise<Uint8Array>((resolve, reject) => {
     try {
-      segmenter.segmentForVideo(canvas, frame.timestamp, (result) => {
+      (segmenter as unknown as { segmentForVideo: (i: OffscreenCanvas, t: number, cb: (r: { categoryMask?: MPMask }) => void) => void }).segmentForVideo(canvas, frame.timestamp, (result) => {
         const cm: MPMask | undefined = result.categoryMask;
         if (!cm) {
           reject(new Error("Segmenter returned no categoryMask"));
