@@ -12,11 +12,15 @@ import type { OverlayItem } from "@/lib/overlay/overlay-types";
 import { shuffleTimeline as shuffleTimelineHelper, type ShuffleResult } from "@/lib/shuffle";
 import { useMediaPool } from "@/state/media-pool";
 import type { TalkingHeadKind, TalkingHeadLayer } from "@/lib/talking-head/talking-head-types";
+import { makeMattedFileId } from "@/lib/talking-head/talking-head-types";
 import {
   addOrReplaceLayer,
   removeLayer as removeLayerPure,
+  setMattingProgress,
+  setMattingStatus,
 } from "@/lib/talking-head/talking-head-store";
 import { pruneStaleKeys } from "@/lib/matting/section-key";
+import { putMattedFile } from "@/lib/media-storage";
 
 interface BuildState {
   // Project inputs
@@ -66,6 +70,10 @@ interface BuildState {
   /** No-op stub kept for legacy UI callsites; the 2-fixed-layer model has no rename concept.
    *  Task 14 will remove the last caller. */
   renameTalkingHeadLayer: (id: string, newTag: string) => { ok: boolean; reason?: string };
+  /** Cancel an in-flight matting job and drop the layer entirely (including original blob). */
+  abortMatting: (layerId: string) => void;
+  /** Re-run matting for a failed overlay layer using its still-cached original file. */
+  retryMatting: (layerId: string) => void;
 
   // Per-shot disable for overlay (cutout PIP) sections. Keyed by `${startMs}-${endMs}`
   // so the decision survives shuffle / reorder. Pruned automatically when a shot's
@@ -123,22 +131,128 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
   const [talkingHeadFiles, setTalkingHeadFiles] = useState<Map<string, File>>(new Map());
   const [disabledOverlayShots, setDisabledOverlayShots] = useState<Set<string>>(new Set());
 
+  // Each overlay layer gets one worker, keyed by layer id. We keep these in a ref so
+  // a re-render mid-matting doesn't recreate the map and lose the handle we need to
+  // terminate the worker on abort/replace. Worker lifetime is tied to its layer:
+  // - 'done' or 'failed' → terminate + delete here.
+  // - layer replaced / removed / aborted → caller terminates explicitly via abortMatting.
+  const mattingWorkers = useRef<Map<string, Worker>>(new Map());
+
+  // Spawns the matting worker for an overlay layer and wires it into state. Pure helper —
+  // the layer record itself is created by addOrReplaceLayer before this runs.
+  const startMatting = useCallback((layer: TalkingHeadLayer, file: File) => {
+    const worker = new Worker(new URL("../../workers/matting-worker.ts", import.meta.url), {
+      type: "module",
+    });
+    mattingWorkers.current.set(layer.id, worker);
+    worker.onmessage = async (e: MessageEvent) => {
+      const data = e.data as
+        | { type: "progress"; framesDone: number; totalFrames: number }
+        | { type: "done"; mattedBlob: Blob }
+        | { type: "failed"; message: string };
+      if (data.type === "progress") {
+        setTalkingHeadLayers((prev) =>
+          setMattingProgress(prev, layer.id, {
+            framesDone: data.framesDone,
+            totalFrames: data.totalFrames,
+          }),
+        );
+      } else if (data.type === "done") {
+        const mattedFileId = makeMattedFileId(layer.id);
+        const filename = `${mattedFileId}.webm`;
+        // Persist to IDB first so a reload during this gap still finds the matted webm;
+        // only after that do we flip the layer status to 'ready' for downstream consumers.
+        await putMattedFile({ id: mattedFileId, blob: data.mattedBlob, filename });
+        setTalkingHeadLayers((prev) => setMattingStatus(prev, layer.id, "ready", mattedFileId));
+        setTalkingHeadFiles((prev) => {
+          const next = new Map(prev);
+          next.set(mattedFileId, new File([data.mattedBlob], filename, { type: "video/webm" }));
+          return next;
+        });
+        worker.terminate();
+        mattingWorkers.current.delete(layer.id);
+      } else if (data.type === "failed") {
+        setTalkingHeadLayers((prev) => setMattingStatus(prev, layer.id, "failed"));
+        worker.terminate();
+        mattingWorkers.current.delete(layer.id);
+      }
+    };
+    worker.postMessage({ type: "start", sourceBlob: file, mattedFileId: makeMattedFileId(layer.id) });
+  }, []);
+
   // Talking-head layers are session-only (in-memory) — no IndexedDB persistence by design.
   // User re-adds via the modal after every reload. The 2-fixed-layer model keys layers by
   // `kind` ('full' | 'overlay') — adding a layer of an existing kind REPLACES it (and drops
-  // any matted webm tied to the old layer). Matting worker integration arrives in Task 13.
+  // any matted webm tied to the old layer). For overlay layers we also kick off the matting
+  // worker; replacing an overlay implicitly terminates the prior worker via abortMatting on
+  // the existing layer's id (the addOrReplaceLayer helper already discards its files).
   const addTalkingHeadLayer = useCallback(
     (args: { kind: TalkingHeadKind; file: File; label?: string }) => {
+      // If we're replacing an overlay layer mid-matting, terminate the in-flight worker
+      // before we lose the layer id we used to key it.
+      if (args.kind === "overlay") {
+        const existing = talkingHeadLayers.find((l) => l.kind === "overlay");
+        if (existing) {
+          const w = mattingWorkers.current.get(existing.id);
+          if (w) {
+            w.terminate();
+            mattingWorkers.current.delete(existing.id);
+          }
+        }
+      }
       const result = addOrReplaceLayer(talkingHeadLayers, args, talkingHeadFiles);
       setTalkingHeadLayers(result.layers);
       setTalkingHeadFiles(result.files);
+      if (args.kind === "overlay") {
+        const newLayer = result.layers.find((l) => l.kind === "overlay");
+        if (newLayer) startMatting(newLayer, args.file);
+      }
       return { ok: true };
     },
-    [talkingHeadLayers, talkingHeadFiles],
+    [talkingHeadLayers, talkingHeadFiles, startMatting],
+  );
+
+  const abortMatting = useCallback(
+    (layerId: string) => {
+      const w = mattingWorkers.current.get(layerId);
+      if (w) {
+        w.terminate();
+        mattingWorkers.current.delete(layerId);
+      }
+      const layer = talkingHeadLayers.find((l) => l.id === layerId);
+      setTalkingHeadLayers((prev) => prev.filter((l) => l.id !== layerId));
+      setTalkingHeadFiles((prev) => {
+        if (!layer) return prev;
+        const next = new Map(prev);
+        next.delete(layer.fileId);
+        if (layer.mattedFileId) next.delete(layer.mattedFileId);
+        return next;
+      });
+    },
+    [talkingHeadLayers],
+  );
+
+  const retryMatting = useCallback(
+    (layerId: string) => {
+      const layer = talkingHeadLayers.find((l) => l.id === layerId);
+      if (!layer || layer.kind !== "overlay") return;
+      const file = talkingHeadFiles.get(layer.fileId);
+      if (!file) return;
+      setTalkingHeadLayers((prev) => setMattingStatus(prev, layerId, "processing"));
+      startMatting(layer, file);
+    },
+    [talkingHeadLayers, talkingHeadFiles, startMatting],
   );
 
   const removeTalkingHeadLayer = useCallback(
     (id: string) => {
+      // Terminate the matting worker first so it can't deliver a 'done' message that
+      // resurrects a layer we just removed (the postMessage would race the setState).
+      const w = mattingWorkers.current.get(id);
+      if (w) {
+        w.terminate();
+        mattingWorkers.current.delete(id);
+      }
       // removeLayer purges the layer's original + matted file blobs in one call.
       const result = removeLayerPure(talkingHeadLayers, id, talkingHeadFiles);
       setTalkingHeadLayers(result.layers);
@@ -310,6 +424,8 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
       addTalkingHeadLayer,
       removeTalkingHeadLayer,
       renameTalkingHeadLayer,
+      abortMatting,
+      retryMatting,
       disabledOverlayShots,
       disableOverlayShot,
       restoreOverlayShot,
@@ -359,6 +475,8 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
     addTalkingHeadLayer,
     removeTalkingHeadLayer,
     renameTalkingHeadLayer,
+    abortMatting,
+    retryMatting,
     disabledOverlayShots,
     disableOverlayShot,
     restoreOverlayShot,
