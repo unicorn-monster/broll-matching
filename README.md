@@ -415,6 +415,20 @@ Commands are defined in `.claude/commands/`:
 
 You can customize these commands or add new ones following the [Claude Code documentation](https://docs.anthropic.com/en/docs/claude-code).
 
+## 🎬 Talking-head overlay (Chrome / Edge only)
+
+The `talking-head-overlay` layer auto-removes the background from a UGC mp4 in the browser
+and composites a cutout onto the bottom-right corner of whatever is playing.
+
+- **Browser**: Chrome or Edge on desktop. Safari, Firefox, and mobile are not supported.
+- **Source quality**: best results with a clean background, even lighting, and a clearly
+  framed selfie. Hair flyaways and gestures may show edge artifacts.
+- **Time**: matting takes 1× to 3× the video duration depending on machine power.
+- **Script syntax**: tag sections with `<base>, talking-head-overlay` (e.g. `mower,
+  talking-head-overlay`) to enable the cutout for that section.
+- **Per-shot disable**: click a shot on the overlay row and press Delete to skip it
+  without editing the script.
+
 ## 🤝 Contributing
 
 1. Fork this repository
