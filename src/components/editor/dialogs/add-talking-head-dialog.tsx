@@ -66,7 +66,11 @@ export function AddTalkingHeadDialog({ open, onOpenChange }: Props) {
       setError("Tag is required.");
       return;
     }
-    const result = addTalkingHeadLayer({ tag, file });
+    // Legacy dialog: only ever produced a single 'full' layer. Task 14 replaces this
+    // UI with a kind-aware picker (full vs overlay). Tag is now derived from kind by
+    // the store, so the user-typed value is dropped here.
+    void tag;
+    const result = addTalkingHeadLayer({ kind: "full", file });
     if (!result.ok) {
       setError(
         result.reason === "duplicate-tag"
