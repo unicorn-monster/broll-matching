@@ -20,6 +20,10 @@ import {
   setMattingStatus,
 } from "@/lib/talking-head/talking-head-store";
 import { pruneStaleKeys } from "@/lib/matting/section-key";
+import {
+  extractFramesAndSendToWorker,
+  type FrameExtractor,
+} from "@/lib/matting/frame-extractor";
 import { putMattedFile } from "@/lib/media-storage";
 
 interface BuildState {
@@ -137,6 +141,11 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
   // - 'done' or 'failed' → terminate + delete here.
   // - layer replaced / removed / aborted → caller terminates explicitly via abortMatting.
   const mattingWorkers = useRef<Map<string, Worker>>(new Map());
+  // Parallel map of frame-extractor handles. We have to abort the extractor
+  // alongside terminating the worker, otherwise the extractor's seek loop hangs
+  // forever waiting for a `frame-ack` that the terminated worker will never send,
+  // leaking the hidden <video> element + object URL.
+  const mattingExtractors = useRef<Map<string, FrameExtractor>>(new Map());
 
   // Spawns the matting worker for an overlay layer and wires it into state. Pure helper —
   // the layer record itself is created by addOrReplaceLayer before this runs.
@@ -148,11 +157,25 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
     //      ("Module scripts don't support importScripts()"). Classic worker is required.
     const worker = new Worker("/matting-worker.bundle.js");
     mattingWorkers.current.set(layer.id, worker);
+    // The matting pipeline is split: HTMLVideoElement decode + frame extraction
+    // lives on the main thread (browser native mp4 decoder handles every mp4 it
+    // can play — the prior mp4box.js demux stalled on B-frame/missing-DTS layouts
+    // from CapCut/QuickTime). The worker is responsible only for MediaPipe
+    // segmentation, I420A composition, VP9-alpha encode, and webm muxing.
+    // `extractFramesAndSendToWorker` drives the init → frame*N → finish protocol;
+    // we still own the worker's `done`, `failed`, and `progress` messages here so
+    // they can update talking-head layer state.
     worker.onmessage = async (e: MessageEvent) => {
       const data = e.data as
+        | { type: "inited" }
+        | { type: "frame-ack"; index: number }
         | { type: "progress"; framesDone: number; totalFrames: number }
         | { type: "done"; mattedBlob: Blob }
         | { type: "failed"; message: string };
+      // `inited` and `frame-ack` are consumed by the frame extractor's own
+      // listener — we ignore them here to keep the layer-state logic focused
+      // on the messages that actually change visible UI.
+      if (data.type === "inited" || data.type === "frame-ack") return;
       if (data.type === "progress") {
         setTalkingHeadLayers((prev) =>
           setMattingProgress(prev, layer.id, {
@@ -174,13 +197,34 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
         });
         worker.terminate();
         mattingWorkers.current.delete(layer.id);
+        mattingExtractors.current.delete(layer.id);
       } else if (data.type === "failed") {
         setTalkingHeadLayers((prev) => setMattingStatus(prev, layer.id, "failed"));
         worker.terminate();
         mattingWorkers.current.delete(layer.id);
+        mattingExtractors.current.get(layer.id)?.abort();
+        mattingExtractors.current.delete(layer.id);
       }
     };
-    worker.postMessage({ type: "start", sourceBlob: file, mattedFileId: makeMattedFileId(layer.id) });
+
+    // Kick off main-thread extraction. The extractor sends `init`, streams
+    // each frame as a transferable ImageBitmap, then sends `finish`. We hold
+    // the returned `abort` handle so abortMatting / removeTalkingHeadLayer can
+    // tear down the hidden <video> + object URL (terminating the worker alone
+    // would leave the extractor's seek loop blocked on a never-arriving ack).
+    const extractor = extractFramesAndSendToWorker(file, worker, {
+      onError: (err) => {
+        setTalkingHeadLayers((prev) => setMattingStatus(prev, layer.id, "failed"));
+        const w = mattingWorkers.current.get(layer.id);
+        if (w) {
+          w.terminate();
+          mattingWorkers.current.delete(layer.id);
+        }
+        mattingExtractors.current.delete(layer.id);
+        console.error("[matting] frame extractor failed:", err);
+      },
+    });
+    mattingExtractors.current.set(layer.id, extractor);
   }, []);
 
   // Talking-head layers are session-only (in-memory) — no IndexedDB persistence by design.
@@ -201,6 +245,8 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
             w.terminate();
             mattingWorkers.current.delete(existing.id);
           }
+          mattingExtractors.current.get(existing.id)?.abort();
+          mattingExtractors.current.delete(existing.id);
         }
       }
       const result = addOrReplaceLayer(talkingHeadLayers, args, talkingHeadFiles);
@@ -222,6 +268,8 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
         w.terminate();
         mattingWorkers.current.delete(layerId);
       }
+      mattingExtractors.current.get(layerId)?.abort();
+      mattingExtractors.current.delete(layerId);
       const layer = talkingHeadLayers.find((l) => l.id === layerId);
       setTalkingHeadLayers((prev) => prev.filter((l) => l.id !== layerId));
       setTalkingHeadFiles((prev) => {
@@ -256,6 +304,8 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
         w.terminate();
         mattingWorkers.current.delete(id);
       }
+      mattingExtractors.current.get(id)?.abort();
+      mattingExtractors.current.delete(id);
       // removeLayer purges the layer's original + matted file blobs in one call.
       const result = removeLayerPure(talkingHeadLayers, id, talkingHeadFiles);
       setTalkingHeadLayers(result.layers);
