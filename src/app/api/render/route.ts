@@ -4,6 +4,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { NextResponse } from "next/server";
 import type { MatchedSection } from "@/lib/auto-match";
+import {
+  buildBaseSegmentArgs,
+  buildBlackGapArgs,
+  FPS,
+} from "@/lib/render-segments";
 
 export const runtime = "nodejs";
 export const maxDuration = 600;
@@ -16,7 +21,6 @@ interface RenderRequest {
   audioDurationMs: number;
 }
 
-const FPS = 30;
 const ONE_FRAME_MS = 1000 / FPS;
 
 async function encodeBlackSegment(
@@ -27,18 +31,14 @@ async function encodeBlackSegment(
   outputHeight: number,
 ): Promise<string> {
   const segPath = path.join(workDir, `gap-${index}.ts`);
-  await runFFmpeg([
-    "-y",
-    "-f", "lavfi",
-    "-i", `color=c=black:s=${outputWidth}x${outputHeight}:r=${FPS}:d=${durationMs / 1000}`,
-    "-c:v", "libx264",
-    "-preset", "ultrafast",
-    "-tune", "fastdecode",
-    "-pix_fmt", "yuv420p",
-    "-r", String(FPS),
-    "-f", "mpegts",
-    segPath,
-  ]);
+  await runFFmpeg(
+    buildBlackGapArgs({
+      durationMs,
+      outputWidth,
+      outputHeight,
+      outPath: segPath,
+    }),
+  );
   return segPath;
 }
 
@@ -150,66 +150,48 @@ export async function POST(req: Request) {
         const matched = section.clips[j];
         if (!matched) continue;
         const segPath = path.join(workDir, `seg-${i}-${j}.ts`);
-        const sectionSec = section.durationMs / 1000;
 
         if (matched.sourceSeekMs !== undefined) {
-          // Talking-head slice: seek to sourceSeekMs inside the source MP4 before
-          // opening the input so ffmpeg discards frames before the seek point.
-          // PTS is reset to zero after the seek via setpts=PTS-STARTPTS, which
-          // prevents timestamp discontinuities in the MPEG-TS segment.
+          // Talking-head slice — see buildBaseSegmentArgs for input-seek + PTS reset rationale.
           const inputPath = clipsByFileId.get(matched.fileId);
           if (!inputPath) continue;
-          await runFFmpeg([
-            "-y",
-            "-ss", String(matched.sourceSeekMs / 1000),  // input seek (accurate by default in ffmpeg ≥ 2.1)
-            "-i", inputPath,
-            "-t", String((matched.trimDurationMs ?? section.durationMs) / 1000),
-            "-vf",
-              `scale=${outputWidth}:${outputHeight}:force_original_aspect_ratio=decrease,` +
-              `pad=${outputWidth}:${outputHeight}:(ow-iw)/2:(oh-ih)/2,` +
-              `setpts=PTS-STARTPTS`,
-            "-an",
-            "-c:v", "libx264",
-            "-preset", "ultrafast",
-            "-tune", "fastdecode",
-            "-pix_fmt", "yuv420p",
-            "-r", String(FPS),
-            "-f", "mpegts",
-            segPath,
-          ]);
+          await runFFmpeg(
+            buildBaseSegmentArgs({
+              kind: "talking-head",
+              inputPath,
+              sourceSeekMs: matched.sourceSeekMs,
+              trimDurationMs: matched.trimDurationMs ?? section.durationMs,
+              outputWidth,
+              outputHeight,
+              outPath: segPath,
+            }),
+          );
         } else if (matched.isPlaceholder) {
-          await runFFmpeg([
-            "-y",
-            "-f", "lavfi",
-            "-i", `color=c=black:s=${outputWidth}x${outputHeight}:r=${FPS}:d=${sectionSec}`,
-            "-c:v", "libx264",
-            "-preset", "ultrafast",
-            "-tune", "fastdecode",
-            "-pix_fmt", "yuv420p",
-            "-r", String(FPS),
-            "-f", "mpegts",
-            segPath,
-          ]);
+          await runFFmpeg(
+            buildBaseSegmentArgs({
+              kind: "placeholder",
+              durationMs: section.durationMs,
+              outputWidth,
+              outputHeight,
+              outPath: segPath,
+            }),
+          );
         } else {
           const inputPath = clipsByFileId.get(matched.fileId);
           if (!inputPath) continue;
-          await runFFmpeg([
-            "-y",
-            "-i", inputPath,
-            ...(matched.trimDurationMs ? ["-t", String(matched.trimDurationMs / 1000)] : []),
-            "-vf",
-            `scale=${outputWidth}:${outputHeight}:force_original_aspect_ratio=decrease,` +
-            `pad=${outputWidth}:${outputHeight}:(ow-iw)/2:(oh-ih)/2,` +
-            `setpts=${(1 / matched.speedFactor).toFixed(4)}*PTS`,
-            "-an",
-            "-c:v", "libx264",
-            "-preset", "ultrafast",
-            "-tune", "fastdecode",
-            "-pix_fmt", "yuv420p",
-            "-r", String(FPS),
-            "-f", "mpegts",
-            segPath,
-          ]);
+          await runFFmpeg(
+            buildBaseSegmentArgs({
+              kind: "broll",
+              inputPath,
+              ...(matched.trimDurationMs !== undefined
+                ? { trimDurationMs: matched.trimDurationMs }
+                : {}),
+              speedFactor: matched.speedFactor,
+              outputWidth,
+              outputHeight,
+              outPath: segPath,
+            }),
+          );
         }
         segments.push(segPath);
       }
