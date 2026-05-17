@@ -52,11 +52,13 @@ export function TalkingHeadPills() {
         {...(!support.ok ? { tooltip: "Yêu cầu Chrome/Edge desktop" } : {})}
         onClick={() => setOpen("overlay")}
       />
-      {/* TODO(Task 15): refactor AddTalkingHeadDialog to accept { kind, existing, onClose }.
-          For now we open the legacy dialog regardless of `open` value; the dialog itself
-          still always produces a `kind: "full"` layer. The overlay pill will be wired
-          end-to-end in Task 15. */}
-      <AddTalkingHeadDialog open={open !== null} onOpenChange={(v) => !v && setOpen(null)} />
+      {open && (
+        <AddTalkingHeadDialog
+          kind={open}
+          existing={open === "full" ? full : overlay}
+          onClose={() => setOpen(null)}
+        />
+      )}
     </>
   );
 }

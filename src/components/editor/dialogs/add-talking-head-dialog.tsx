@@ -1,183 +1,142 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Video, X } from "lucide-react";
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useBuildState } from "@/components/build/build-state-context";
+import type {
+  TalkingHeadKind,
+  TalkingHeadLayer,
+} from "@/lib/talking-head/talking-head-types";
+
+// Length threshold (in seconds) above which we warn that matting will take
+// a long time before kicking off the worker. 5 minutes is a rough heuristic
+// derived from the WebCodecs-based encoder throughput on consumer hardware.
+const LENGTH_WARN_SEC = 300;
 
 interface Props {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
+  kind: TalkingHeadKind;
+  existing: TalkingHeadLayer | undefined;
+  onClose: () => void;
 }
 
-const DEFAULT_NEW_TAG_BASE = "talking-head";
+const KIND_LABEL: Record<TalkingHeadKind, string> = {
+  full: "talking-head-full",
+  overlay: "talking-head-overlay",
+};
 
-function suggestNextTag(existing: { tag: string }[]): string {
-  const taken = new Set(existing.map((l) => l.tag));
-  if (!taken.has(DEFAULT_NEW_TAG_BASE)) return DEFAULT_NEW_TAG_BASE;
-  let n = 2;
-  while (taken.has(`${DEFAULT_NEW_TAG_BASE}-${n}`)) n++;
-  return `${DEFAULT_NEW_TAG_BASE}-${n}`;
-}
-
-export function AddTalkingHeadDialog({ open, onOpenChange }: Props) {
-  const { talkingHeadLayers, addTalkingHeadLayer } = useBuildState();
-  const [tag, setTag] = useState(() => suggestNextTag(talkingHeadLayers));
+export function AddTalkingHeadDialog({ kind, existing, onClose }: Props) {
+  const { addTalkingHeadLayer, removeTalkingHeadLayer, abortMatting } =
+    useBuildState();
   const [file, setFile] = useState<File | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement | null>(null);
+  // When non-null we're showing the >5min confirmation screen with the file
+  // ready to commit on user approval. Cancel returns to the picker.
+  const [pendingConfirm, setPendingConfirm] = useState<File | null>(null);
 
-  // Reset to a fresh unique default whenever the dialog opens.
-  useEffect(() => {
-    if (open) {
-      setTag(suggestNextTag(talkingHeadLayers));
-      setFile(null);
-      setError(null);
-      if (fileRef.current) fileRef.current.value = "";
+  async function handleSubmit(f: File) {
+    // Only overlay layers go through matting — full layers play the original
+    // file unchanged, so duration doesn't gate them.
+    if (kind === "overlay" && !pendingConfirm) {
+      const dur = await probeDurationSec(f);
+      if (dur > LENGTH_WARN_SEC) {
+        setPendingConfirm(f);
+        return;
+      }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
-
-  function handleFile(f: File) {
-    if (!f.name.toLowerCase().endsWith(".mp4")) {
-      setError("File must be MP4.");
-      return;
-    }
-    if (f.size === 0) {
-      setError("File is empty.");
-      return;
-    }
-    setError(null);
-    setFile(f);
+    addTalkingHeadLayer({ kind, file: f });
+    onClose();
   }
 
-  function onSubmit() {
-    if (!file) {
-      setError("Pick an MP4.");
-      return;
+  function handleRemove(layer: TalkingHeadLayer) {
+    // For an in-flight overlay matting job we must abort (which also drops
+    // the layer + cached blobs); for any other state plain removal is enough.
+    if (kind === "overlay" && layer.mattingStatus === "processing") {
+      abortMatting(layer.id);
+    } else {
+      removeTalkingHeadLayer(layer.id);
     }
-    if (tag.trim().length === 0) {
-      setError("Tag is required.");
-      return;
-    }
-    // Legacy dialog: only ever produced a single 'full' layer. Task 14 replaces this
-    // UI with a kind-aware picker (full vs overlay). Tag is now derived from kind by
-    // the store, so the user-typed value is dropped here.
-    void tag;
-    const result = addTalkingHeadLayer({ kind: "full", file });
-    if (!result.ok) {
-      setError(
-        result.reason === "duplicate-tag"
-          ? "Tag already in use by another layer."
-          : result.reason === "empty-tag"
-            ? "Tag is required."
-            : "Cannot add layer.",
-      );
-      return;
-    }
-    // Close on success so user can re-open to add another.
-    onOpenChange(false);
+    onClose();
   }
+
+  const titlePrefix = existing ? "Replace" : "Add";
+  const submitLabel = existing ? "Replace" : "Upload";
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!max-w-xl">
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add talking-head layer</DialogTitle>
-          <DialogDescription>
-            Maps one MP4 (audio ignored) to a script tag. Sections with that tag are sliced from this video. Session-only — re-add after a page reload.
-          </DialogDescription>
+          <DialogTitle>{`${titlePrefix} ${KIND_LABEL[kind]}`}</DialogTitle>
         </DialogHeader>
 
-        <div className="grid grid-cols-[1fr_1.5fr] gap-4">
-          {/* Left column: Tag */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">Tag</label>
-            <input
-              value={tag}
-              onChange={(e) => setTag(e.target.value)}
-              placeholder="talking-head"
-              className="w-full px-3 py-2 text-sm bg-background border border-border rounded-md font-mono"
-            />
-            <p className="text-xs text-muted-foreground">
-              Script sections with this tag will play this video.
+        {pendingConfirm ? (
+          <div className="space-y-3">
+            <p className="text-sm">
+              Video dài hơn 5 phút. Matting có thể mất 15+ phút. Tiếp tục?
             </p>
-          </div>
-
-          {/* Right column: file dropzone */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">
-              Video (MP4, audio ignored)
-            </label>
-            {file ? (
-              <div className="flex items-center gap-3 p-3 border border-border rounded-md bg-muted/30">
-                <Video className="w-5 h-5 text-primary shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{file.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {(file.size / 1024 / 1024).toFixed(1)} MB
-                  </p>
-                </div>
-                <button
-                  onClick={() => setFile(null)}
-                  className="text-muted-foreground hover:text-foreground"
-                  aria-label="Clear file"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            ) : (
-              <div
-                className="border-2 border-dashed border-border rounded-md p-5 flex flex-col items-center gap-2 cursor-pointer hover:bg-muted/20"
-                onDrop={(e) => {
-                  e.preventDefault();
-                  const f = e.dataTransfer.files[0];
-                  if (f) handleFile(f);
-                }}
-                onDragOver={(e) => e.preventDefault()}
-                onClick={() => fileRef.current?.click()}
+            <DialogFooter>
+              <Button
+                variant="ghost"
+                onClick={() => setPendingConfirm(null)}
               >
-                <Video className="w-7 h-7 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">Drop MP4 here or click to browse</p>
-              </div>
-            )}
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".mp4,video/mp4"
-              hidden
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) handleFile(f);
-              }}
-            />
+                Hủy
+              </Button>
+              <Button onClick={() => void handleSubmit(pendingConfirm)}>
+                Tiếp tục
+              </Button>
+            </DialogFooter>
           </div>
-        </div>
-
-        {error && <div className="text-xs text-red-400">{error}</div>}
-
-        <div className="flex justify-end gap-2">
-          <button
-            onClick={() => onOpenChange(false)}
-            className="px-4 py-1.5 text-sm rounded-md hover:bg-muted"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onSubmit}
-            disabled={!file || tag.trim().length === 0}
-            className="px-4 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Add layer
-          </button>
-        </div>
+        ) : (
+          <div className="space-y-3">
+            <Input
+              type="file"
+              accept="video/mp4"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            />
+            <DialogFooter className="gap-2">
+              {existing && (
+                <Button
+                  variant="destructive"
+                  onClick={() => handleRemove(existing)}
+                >
+                  Remove
+                </Button>
+              )}
+              <Button
+                disabled={!file}
+                onClick={() => file && void handleSubmit(file)}
+              >
+                {submitLabel}
+              </Button>
+            </DialogFooter>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );
+}
+
+/** Probe an MP4's duration via a hidden <video> element. Used only on the
+ *  client (component is `"use client"`), so no SSR concerns. */
+function probeDurationSec(file: File): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const v = document.createElement("video");
+    v.src = url;
+    v.preload = "metadata";
+    v.onloadedmetadata = () => {
+      URL.revokeObjectURL(url);
+      resolve(v.duration);
+    };
+    v.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("probe failed"));
+    };
+  });
 }
