@@ -6,8 +6,11 @@ import { useBuildState } from "@/components/build/build-state-context";
 import { getLayerByKind } from "@/lib/talking-head/talking-head-store";
 import { detectMattingSupport } from "@/lib/matting/browser-support";
 import { AddTalkingHeadDialog } from "@/components/editor/dialogs/add-talking-head-dialog";
+import { MattingProgressModal } from "@/components/editor/dialogs/matting-progress-modal";
 import type { TalkingHeadLayer } from "@/lib/talking-head/talking-head-types";
 import { cn } from "@/lib/utils";
+
+type OpenModal = null | "add-full" | "add-overlay" | "matting-progress";
 
 /** Two fixed pills (full + overlay) that mirror the AudioPill / ScriptPill
  *  chip style. Replaces the legacy N-layer "Add talking-head" button. */
@@ -15,19 +18,26 @@ export function TalkingHeadPills() {
   const { talkingHeadLayers } = useBuildState();
   const full = getLayerByKind(talkingHeadLayers, "full");
   const overlay = getLayerByKind(talkingHeadLayers, "overlay");
-  const [open, setOpen] = useState<null | "full" | "overlay">(null);
+  const [open, setOpen] = useState<OpenModal>(null);
   const support = detectMattingSupport();
 
   const overlayProcessing = overlay?.mattingStatus === "processing";
   const overlayReady = !!overlay && overlay.mattingStatus === "ready";
   const overlayFailed = overlay?.mattingStatus === "failed";
 
+  // Overlay-pill routing: clicking a processing layer opens the live progress modal
+  // (with abort), while any other state (empty / ready / failed) opens the add/replace
+  // dialog. This avoids the user accidentally launching a re-upload UI mid-job.
+  const handleOverlayClick = () => {
+    setOpen(overlayProcessing ? "matting-progress" : "add-overlay");
+  };
+
   return (
     <>
       <Pill
         label={full ? "talking-head-full" : "+ talking-head-full"}
         state={full ? "ready" : "empty"}
-        onClick={() => setOpen("full")}
+        onClick={() => setOpen("add-full")}
       />
       <Pill
         label={
@@ -50,14 +60,17 @@ export function TalkingHeadPills() {
         }
         disabled={!support.ok}
         {...(!support.ok ? { tooltip: "Yêu cầu Chrome/Edge desktop" } : {})}
-        onClick={() => setOpen("overlay")}
+        onClick={handleOverlayClick}
       />
-      {open && (
+      {(open === "add-full" || open === "add-overlay") && (
         <AddTalkingHeadDialog
-          kind={open}
-          existing={open === "full" ? full : overlay}
+          kind={open === "add-full" ? "full" : "overlay"}
+          existing={open === "add-full" ? full : overlay}
           onClose={() => setOpen(null)}
         />
+      )}
+      {open === "matting-progress" && (
+        <MattingProgressModal onClose={() => setOpen(null)} />
       )}
     </>
   );
