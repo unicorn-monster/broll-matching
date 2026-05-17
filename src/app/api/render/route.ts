@@ -7,6 +7,7 @@ import type { MatchedSection } from "@/lib/auto-match";
 import {
   buildBaseSegmentArgs,
   buildBlackGapArgs,
+  buildOverlayMergeArgs,
   FPS,
 } from "@/lib/render-segments";
 
@@ -86,6 +87,17 @@ export async function POST(req: Request) {
       await writeFile(p, Buffer.from(await entry.arrayBuffer()));
       clipsByFileId.set(entry.name, p);
     }
+    // Matted talking-head overlays (alpha-channel webm produced by the matting worker).
+    // Same File.name → fileId convention as the regular `clips` field so the per-section
+    // overlay branch below can look up the correct on-disk path by `section.overlayClip.fileId`.
+    const mattedByFileId = new Map<string, string>();
+    for (const entry of formData.getAll("matted-clips")) {
+      if (!(entry instanceof File)) continue;
+      const safeName = entry.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const p = path.join(workDir, `matted-${safeName}.webm`);
+      await writeFile(p, Buffer.from(await entry.arrayBuffer()));
+      mattedByFileId.set(entry.name, p);
+    }
     const audioPath = path.join(workDir, "audio.mp3");
     await writeFile(audioPath, Buffer.from(await audio.arrayBuffer()));
 
@@ -145,6 +157,11 @@ export async function POST(req: Request) {
         segments.push(await encodeBlackSegment(workDir, gapIndex++, gapBefore, outputWidth, outputHeight));
       }
 
+      // Track the base segments belonging to *this* section so the overlay branch
+      // below can swap them for a single merged segment without affecting prior
+      // sections' contributions to the top-level `segments` array.
+      const currentSectionSegments: string[] = [];
+
       // Section's clip(s) — same encode logic as before.
       for (let j = 0; j < section.clips.length; j++) {
         const matched = section.clips[j];
@@ -194,6 +211,52 @@ export async function POST(req: Request) {
           );
         }
         segments.push(segPath);
+        currentSectionSegments.push(segPath);
+      }
+
+      // Per-section overlay branch: if the section has a matted talking-head overlay,
+      // collapse its base segments into a single intermediate MP4, composite the matted
+      // webm onto it, and replace the base segments in the top-level `segments` array
+      // with the merged MPEG-TS. The trimDurationMs cap inside buildOverlayMergeArgs
+      // keeps the merged segment ≤ section duration so downstream concat timing holds.
+      if (section.overlayClip) {
+        const overlayPath = mattedByFileId.get(section.overlayClip.fileId);
+        if (overlayPath && currentSectionSegments.length > 0) {
+          const baseConcatList = path.join(workDir, `base-list-${i}.txt`);
+          await writeFile(
+            baseConcatList,
+            currentSectionSegments.map((p) => `file '${p}'`).join("\n"),
+          );
+          const baseMp4 = path.join(workDir, `base-${i}.mp4`);
+          await runFFmpeg([
+            "-y",
+            "-f", "concat", "-safe", "0", "-i", baseConcatList,
+            "-c", "copy", baseMp4,
+          ]);
+
+          const mergedPath = path.join(workDir, `seg-${i}-merged.ts`);
+          await runFFmpeg(
+            buildOverlayMergeArgs({
+              basePath: baseMp4,
+              overlayPath,
+              sourceSeekMs: section.overlayClip.sourceSeekMs ?? 0,
+              trimDurationMs: section.overlayClip.trimDurationMs ?? section.durationMs,
+              outputWidth,
+              outputHeight,
+              outPath: mergedPath,
+            }),
+          );
+
+          // Splice the base segments out of the top-level array and append the
+          // merged one in their place. Splicing by indexOf (rather than position
+          // math) keeps this robust even if a future change interleaves additional
+          // segments between the per-clip loop and the overlay branch.
+          for (const baseSeg of currentSectionSegments) {
+            const idx = segments.indexOf(baseSeg);
+            if (idx >= 0) segments.splice(idx, 1);
+          }
+          segments.push(mergedPath);
+        }
       }
 
       cursor = section.endMs;
