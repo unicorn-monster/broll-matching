@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Video } from "lucide-react";
 import { useBuildState } from "@/components/build/build-state-context";
 import { getLayerByKind } from "@/lib/talking-head/talking-head-store";
-import { detectMattingSupport } from "@/lib/matting/browser-support";
+import { detectMattingSupport, type SupportResult } from "@/lib/matting/browser-support";
 import { AddTalkingHeadDialog } from "@/components/editor/dialogs/add-talking-head-dialog";
 import { MattingProgressModal } from "@/components/editor/dialogs/matting-progress-modal";
 import type { TalkingHeadLayer } from "@/lib/talking-head/talking-head-types";
@@ -19,7 +19,11 @@ export function TalkingHeadPills() {
   const full = getLayerByKind(talkingHeadLayers, "full");
   const overlay = getLayerByKind(talkingHeadLayers, "overlay");
   const [open, setOpen] = useState<OpenModal>(null);
-  const support = detectMattingSupport();
+  // Defer feature detection to after mount: detectMattingSupport reads `window` and
+  // `navigator`, which differ between SSR and client. Rendering the unsupported state
+  // initially and swapping after mount avoids a hydration mismatch.
+  const [support, setSupport] = useState<SupportResult>({ ok: false, reason: "no-webcodecs" });
+  useEffect(() => { setSupport(detectMattingSupport()); }, []);
 
   const overlayProcessing = overlay?.mattingStatus === "processing";
   const overlayReady = !!overlay && overlay.mattingStatus === "ready";
