@@ -80,15 +80,15 @@ export function RenderTrigger({ audioFile, audioDurationMs, timeline, includeCap
         if (file) fd.append("clips", new File([file], layer.fileId));
       }
 
-      // Append every overlay layer's matted webm (alpha channel) when matting has finished.
-      // The server (api/render) reads this `matted-clips` field and keys files by File.name,
-      // which must equal `layer.mattedFileId` — the same id auto-match places in
-      // `section.overlayClip.fileId`. Re-wrap with mattedFileId as the filename to guarantee that.
+      // Append every overlay-kind layer's file directly. The uploaded file is
+      // already pre-matted (e.g. CapCut HEVC-alpha mp4) — ffmpeg's overlay filter
+      // composes its alpha at render time. The server (api/render) reads the
+      // `matted-clips` field and keys files by File.name, which must equal
+      // `layer.fileId` — the same id auto-match places in `section.overlayClip.fileId`.
       for (const layer of talkingHeadLayers) {
-        if (layer.kind === "overlay" && layer.mattingStatus === "ready" && layer.mattedFileId) {
-          const matted = talkingHeadFiles.get(layer.mattedFileId);
-          if (matted) fd.append("matted-clips", new File([matted], layer.mattedFileId));
-        }
+        if (layer.kind !== "overlay") continue;
+        const file = talkingHeadFiles.get(layer.fileId);
+        if (file) fd.append("matted-clips", new File([file], layer.fileId));
       }
 
       // Caption payload: PNG per visible text overlay + JSON metadata (timing + pixel position).

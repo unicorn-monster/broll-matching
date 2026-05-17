@@ -296,25 +296,16 @@ export function matchSections(
     }
 
     // Resolve overlay: only when the section opted in, the user hasn't disabled
-    // this shot, and the overlay layer is fully matted. Otherwise either silently
-    // skip (user-disabled) or warn (not ready) — never block the base clip.
+    // this shot, and an overlay layer is configured. The uploaded overlay file is
+    // assumed to already carry alpha (matted in CapCut etc.); ffmpeg's overlay
+    // filter composes it server-side. No in-app matting → no readiness gate.
     let overlayClip: MatchedClip | undefined;
-    if (hasOverlay) {
+    if (hasOverlay && overlayLayer) {
       const isDisabled = disabledOverlayShots.has(sectionKey({ startMs, endMs }));
-      if (isDisabled) {
-        // intentionally silent — user disabled this shot
-      } else if (
-        !overlayLayer ||
-        overlayLayer.mattingStatus !== "ready" ||
-        !overlayLayer.mattedFileId
-      ) {
-        warnings.push(
-          `Overlay layer not ready — section ${sectionIndex + 1} rendered without overlay`,
-        );
-      } else {
+      if (!isDisabled) {
         overlayClip = {
           clipId: "talking-head-overlay",
-          fileId: overlayLayer.mattedFileId,
+          fileId: overlayLayer.fileId,
           speedFactor: 1,
           trimDurationMs: section.durationMs,
           sourceSeekMs: startMs,

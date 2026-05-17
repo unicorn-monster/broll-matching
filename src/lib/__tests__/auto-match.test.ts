@@ -609,22 +609,18 @@ describe("matchSections — overlay", () => {
   function fakeFullLayer(): TalkingHeadLayer {
     return { id: "full-1", tag: FULL_LAYER_TAG, fileId: "f-full", kind: "full" };
   }
-  function fakeOverlayLayer(
-    opts: { status?: "processing" | "ready"; mattedFileId?: string } = {},
-  ): TalkingHeadLayer {
+  function fakeOverlayLayer(): TalkingHeadLayer {
     return {
       id: "ov-1",
       tag: OVERLAY_LAYER_TAG,
       fileId: "f-overlay",
       kind: "overlay",
-      mattingStatus: opts.status ?? "ready",
-      ...(opts.mattedFileId ? { mattedFileId: opts.mattedFileId } : { mattedFileId: "matted-ov-1" }),
     };
   }
 
   const noClips = new Map();
 
-  it("emits overlayClip when section has overlay tag and overlay layer is ready", () => {
+  it("emits overlayClip when section has overlay tag and overlay layer exists", () => {
     const sections: ParsedSection[] = [{
       lineNumber: 1, startTime: 30, endTime: 45,
       tags: ["mower", OVERLAY_LAYER_TAG], scriptText: "x", durationMs: 15000,
@@ -632,24 +628,8 @@ describe("matchSections — overlay", () => {
     const out = matchSections(sections, noClips, undefined, [fakeOverlayLayer()], new Set());
     expect(out[0]!.overlayClip).toBeDefined();
     expect(out[0]!.overlayClip!.sourceSeekMs).toBe(30000);
-    expect(out[0]!.overlayClip!.fileId).toBe("matted-ov-1");
+    expect(out[0]!.overlayClip!.fileId).toBe("f-overlay");
     expect(out[0]!.overlayClip!.isOverlay).toBe(true);
-  });
-
-  it("warns and omits overlayClip when overlay layer is processing", () => {
-    const sections: ParsedSection[] = [{
-      lineNumber: 1, startTime: 30, endTime: 45,
-      tags: ["mower", OVERLAY_LAYER_TAG], scriptText: "x", durationMs: 15000,
-    }];
-    const out = matchSections(
-      sections,
-      noClips,
-      undefined,
-      [fakeOverlayLayer({ status: "processing" })],
-      new Set(),
-    );
-    expect(out[0]!.overlayClip).toBeUndefined();
-    expect(out[0]!.warnings.some((w) => /overlay.*not ready/i.test(w))).toBe(true);
   });
 
   it("skips overlay when section key is in disabledOverlayShots", () => {
@@ -685,6 +665,6 @@ describe("matchSections — overlay", () => {
     expect(out[0]!.clips[0]!.fileId).toBe("f-full");
     expect(out[0]!.clips[0]!.sourceSeekMs).toBe(30000);
     expect(out[0]!.overlayClip).toBeDefined();
-    expect(out[0]!.overlayClip!.fileId).toBe("matted-ov-1");
+    expect(out[0]!.overlayClip!.fileId).toBe("f-overlay");
   });
 });

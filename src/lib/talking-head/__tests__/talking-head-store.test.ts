@@ -4,8 +4,6 @@ import {
   findLayerByTag,
   getLayerByKind,
   removeLayer,
-  setMattingProgress,
-  setMattingStatus,
 } from "../talking-head-store";
 import {
   FULL_LAYER_TAG,
@@ -36,11 +34,10 @@ describe("addOrReplaceLayer (kind-aware)", () => {
     expect(second.files.has(first.layers[0]!.fileId)).toBe(false);
   });
 
-  it("adds overlay layer with mattingStatus='processing'", () => {
+  it("adds overlay layer ready immediately (no matting state)", () => {
     const r = addOrReplaceLayer([], { kind: "overlay", file: fakeFile() });
     expect(r.layers[0]!.kind).toBe("overlay");
     expect(r.layers[0]!.tag).toBe(OVERLAY_LAYER_TAG);
-    expect(r.layers[0]!.mattingStatus).toBe("processing");
   });
 
   it("full and overlay coexist independently", () => {
@@ -52,36 +49,10 @@ describe("addOrReplaceLayer (kind-aware)", () => {
   });
 });
 
-describe("setMattingStatus / setMattingProgress", () => {
-  it("transitions overlay layer processing → ready and clears progress", () => {
-    const r = addOrReplaceLayer([], { kind: "overlay", file: fakeFile() });
-    const id = r.layers[0]!.id;
-    const withProgress = setMattingProgress(r.layers, id, { framesDone: 50, totalFrames: 100 });
-    expect(getLayerByKind(withProgress, "overlay")!.mattingProgress!.framesDone).toBe(50);
-
-    const ready = setMattingStatus(withProgress, id, "ready", "matted-xyz");
-    const overlay = getLayerByKind(ready, "overlay")!;
-    expect(overlay.mattingStatus).toBe("ready");
-    expect(overlay.mattedFileId).toBe("matted-xyz");
-    expect(overlay.mattingProgress).toBeUndefined();
-  });
-
-  it("transitions to failed without setting mattedFileId", () => {
-    const r = addOrReplaceLayer([], { kind: "overlay", file: fakeFile() });
-    const failed = setMattingStatus(r.layers, r.layers[0]!.id, "failed");
-    expect(getLayerByKind(failed, "overlay")!.mattingStatus).toBe("failed");
-    expect(getLayerByKind(failed, "overlay")!.mattedFileId).toBeUndefined();
-  });
-});
-
 describe("removeLayer", () => {
-  it("removes the layer and its files (both original and matted)", () => {
+  it("removes the layer and its file", () => {
     const r = addOrReplaceLayer([], { kind: "overlay", file: fakeFile() });
-    const ready = setMattingStatus(r.layers, r.layers[0]!.id, "ready", "matted-xyz");
-    const filesWithMatted = new Map(r.files);
-    filesWithMatted.set("matted-xyz", fakeFile("matted.webm"));
-
-    const after = removeLayer(ready, r.layers[0]!.id, filesWithMatted);
+    const after = removeLayer(r.layers, r.layers[0]!.id, r.files);
     expect(after.layers).toHaveLength(0);
     expect(after.files.size).toBe(0);
   });

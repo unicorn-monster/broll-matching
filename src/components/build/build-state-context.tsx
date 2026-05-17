@@ -12,19 +12,11 @@ import type { OverlayItem } from "@/lib/overlay/overlay-types";
 import { shuffleTimeline as shuffleTimelineHelper, type ShuffleResult } from "@/lib/shuffle";
 import { useMediaPool } from "@/state/media-pool";
 import type { TalkingHeadKind, TalkingHeadLayer } from "@/lib/talking-head/talking-head-types";
-import { makeMattedFileId } from "@/lib/talking-head/talking-head-types";
 import {
   addOrReplaceLayer,
   removeLayer as removeLayerPure,
-  setMattingProgress,
-  setMattingStatus,
 } from "@/lib/talking-head/talking-head-store";
 import { pruneStaleKeys } from "@/lib/matting/section-key";
-import {
-  extractFramesAndSendToWorker,
-  type FrameExtractor,
-} from "@/lib/matting/frame-extractor";
-import { putMattedFile } from "@/lib/media-storage";
 
 interface BuildState {
   // Project inputs
@@ -67,6 +59,8 @@ interface BuildState {
 
   // Talking-head layers (2-fixed-layer kind-based model: 'full' + 'overlay').
   // Adding a layer with a kind that already exists REPLACES the existing one.
+  // For overlay-kind layers the uploaded file must already carry alpha
+  // (matted in CapCut / external tool); the app does no in-browser matting.
   talkingHeadLayers: TalkingHeadLayer[];
   talkingHeadFiles: Map<string, File>;
   addTalkingHeadLayer: (args: { kind: TalkingHeadKind; file: File; label?: string }) => { ok: boolean; reason?: string };
@@ -74,10 +68,6 @@ interface BuildState {
   /** No-op stub kept for legacy UI callsites; the 2-fixed-layer model has no rename concept.
    *  Task 14 will remove the last caller. */
   renameTalkingHeadLayer: (id: string, newTag: string) => { ok: boolean; reason?: string };
-  /** Cancel an in-flight matting job and drop the layer entirely (including original blob). */
-  abortMatting: (layerId: string) => void;
-  /** Re-run matting for a failed overlay layer using its still-cached original file. */
-  retryMatting: (layerId: string) => void;
 
   // Per-shot disable for overlay (cutout PIP) sections. Keyed by `${startMs}-${endMs}`
   // so the decision survives shuffle / reorder. Pruned automatically when a shot's
@@ -135,178 +125,24 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
   const [talkingHeadFiles, setTalkingHeadFiles] = useState<Map<string, File>>(new Map());
   const [disabledOverlayShots, setDisabledOverlayShots] = useState<Set<string>>(new Set());
 
-  // Each overlay layer gets one worker, keyed by layer id. We keep these in a ref so
-  // a re-render mid-matting doesn't recreate the map and lose the handle we need to
-  // terminate the worker on abort/replace. Worker lifetime is tied to its layer:
-  // - 'done' or 'failed' → terminate + delete here.
-  // - layer replaced / removed / aborted → caller terminates explicitly via abortMatting.
-  const mattingWorkers = useRef<Map<string, Worker>>(new Map());
-  // Parallel map of frame-extractor handles. We have to abort the extractor
-  // alongside terminating the worker, otherwise the extractor's seek loop hangs
-  // forever waiting for a `frame-ack` that the terminated worker will never send,
-  // leaking the hidden <video> element + object URL.
-  const mattingExtractors = useRef<Map<string, FrameExtractor>>(new Map());
-
-  // Spawns the matting worker for an overlay layer and wires it into state. Pure helper —
-  // the layer record itself is created by addOrReplaceLayer before this runs.
-  const startMatting = useCallback((layer: TalkingHeadLayer, file: File) => {
-    // NOTE: the matting worker is pre-bundled by esbuild as IIFE (CLASSIC worker) to
-    // /public/matting-worker.bundle.js (see `pnpm build:matting-worker`). Two reasons:
-    //   1. Next.js dev bundlers (Turbopack/Webpack) hang chunking the heavy MediaPipe deps.
-    //   2. MediaPipe's wasm loader uses `importScripts()` which fails in module workers
-    //      ("Module scripts don't support importScripts()"). Classic worker is required.
-    const worker = new Worker("/matting-worker.bundle.js");
-    mattingWorkers.current.set(layer.id, worker);
-    // The matting pipeline is split: HTMLVideoElement decode + frame extraction
-    // lives on the main thread (browser native mp4 decoder handles every mp4 it
-    // can play — the prior mp4box.js demux stalled on B-frame/missing-DTS layouts
-    // from CapCut/QuickTime). The worker is responsible only for MediaPipe
-    // segmentation, I420A composition, VP9-alpha encode, and webm muxing.
-    // `extractFramesAndSendToWorker` drives the init → frame*N → finish protocol;
-    // we still own the worker's `done`, `failed`, and `progress` messages here so
-    // they can update talking-head layer state.
-    worker.onmessage = async (e: MessageEvent) => {
-      const data = e.data as
-        | { type: "inited" }
-        | { type: "frame-ack"; index: number }
-        | { type: "progress"; framesDone: number; totalFrames: number }
-        | { type: "done"; mattedBlob: Blob }
-        | { type: "failed"; message: string };
-      // `inited` and `frame-ack` are consumed by the frame extractor's own
-      // listener — we ignore them here to keep the layer-state logic focused
-      // on the messages that actually change visible UI.
-      if (data.type === "inited" || data.type === "frame-ack") return;
-      if (data.type === "progress") {
-        setTalkingHeadLayers((prev) =>
-          setMattingProgress(prev, layer.id, {
-            framesDone: data.framesDone,
-            totalFrames: data.totalFrames,
-          }),
-        );
-      } else if (data.type === "done") {
-        const mattedFileId = makeMattedFileId(layer.id);
-        const filename = `${mattedFileId}.webm`;
-        // Persist to IDB first so a reload during this gap still finds the matted webm;
-        // only after that do we flip the layer status to 'ready' for downstream consumers.
-        await putMattedFile({ id: mattedFileId, blob: data.mattedBlob, filename });
-        setTalkingHeadLayers((prev) => setMattingStatus(prev, layer.id, "ready", mattedFileId));
-        setTalkingHeadFiles((prev) => {
-          const next = new Map(prev);
-          next.set(mattedFileId, new File([data.mattedBlob], filename, { type: "video/webm" }));
-          return next;
-        });
-        worker.terminate();
-        mattingWorkers.current.delete(layer.id);
-        mattingExtractors.current.delete(layer.id);
-      } else if (data.type === "failed") {
-        setTalkingHeadLayers((prev) => setMattingStatus(prev, layer.id, "failed"));
-        worker.terminate();
-        mattingWorkers.current.delete(layer.id);
-        mattingExtractors.current.get(layer.id)?.abort();
-        mattingExtractors.current.delete(layer.id);
-      }
-    };
-
-    // Kick off main-thread extraction. The extractor sends `init`, streams
-    // each frame as a transferable ImageBitmap, then sends `finish`. We hold
-    // the returned `abort` handle so abortMatting / removeTalkingHeadLayer can
-    // tear down the hidden <video> + object URL (terminating the worker alone
-    // would leave the extractor's seek loop blocked on a never-arriving ack).
-    const extractor = extractFramesAndSendToWorker(file, worker, {
-      onError: (err) => {
-        setTalkingHeadLayers((prev) => setMattingStatus(prev, layer.id, "failed"));
-        const w = mattingWorkers.current.get(layer.id);
-        if (w) {
-          w.terminate();
-          mattingWorkers.current.delete(layer.id);
-        }
-        mattingExtractors.current.delete(layer.id);
-        console.error("[matting] frame extractor failed:", err);
-      },
-    });
-    mattingExtractors.current.set(layer.id, extractor);
-  }, []);
-
   // Talking-head layers are session-only (in-memory) — no IndexedDB persistence by design.
   // User re-adds via the modal after every reload. The 2-fixed-layer model keys layers by
-  // `kind` ('full' | 'overlay') — adding a layer of an existing kind REPLACES it (and drops
-  // any matted webm tied to the old layer). For overlay layers we also kick off the matting
-  // worker; replacing an overlay implicitly terminates the prior worker via abortMatting on
-  // the existing layer's id (the addOrReplaceLayer helper already discards its files).
+  // `kind` ('full' | 'overlay') — adding a layer of an existing kind REPLACES it (and
+  // drops the cached blob). Overlay-kind uploads are expected to already carry alpha
+  // (CapCut HEVC-alpha export etc.); the app does no in-browser matting.
   const addTalkingHeadLayer = useCallback(
     (args: { kind: TalkingHeadKind; file: File; label?: string }) => {
-      // If we're replacing an overlay layer mid-matting, terminate the in-flight worker
-      // before we lose the layer id we used to key it.
-      if (args.kind === "overlay") {
-        const existing = talkingHeadLayers.find((l) => l.kind === "overlay");
-        if (existing) {
-          const w = mattingWorkers.current.get(existing.id);
-          if (w) {
-            w.terminate();
-            mattingWorkers.current.delete(existing.id);
-          }
-          mattingExtractors.current.get(existing.id)?.abort();
-          mattingExtractors.current.delete(existing.id);
-        }
-      }
       const result = addOrReplaceLayer(talkingHeadLayers, args, talkingHeadFiles);
       setTalkingHeadLayers(result.layers);
       setTalkingHeadFiles(result.files);
-      if (args.kind === "overlay") {
-        const newLayer = result.layers.find((l) => l.kind === "overlay");
-        if (newLayer) startMatting(newLayer, args.file);
-      }
       return { ok: true };
     },
-    [talkingHeadLayers, talkingHeadFiles, startMatting],
-  );
-
-  const abortMatting = useCallback(
-    (layerId: string) => {
-      const w = mattingWorkers.current.get(layerId);
-      if (w) {
-        w.terminate();
-        mattingWorkers.current.delete(layerId);
-      }
-      mattingExtractors.current.get(layerId)?.abort();
-      mattingExtractors.current.delete(layerId);
-      const layer = talkingHeadLayers.find((l) => l.id === layerId);
-      setTalkingHeadLayers((prev) => prev.filter((l) => l.id !== layerId));
-      setTalkingHeadFiles((prev) => {
-        if (!layer) return prev;
-        const next = new Map(prev);
-        next.delete(layer.fileId);
-        if (layer.mattedFileId) next.delete(layer.mattedFileId);
-        return next;
-      });
-    },
-    [talkingHeadLayers],
-  );
-
-  const retryMatting = useCallback(
-    (layerId: string) => {
-      const layer = talkingHeadLayers.find((l) => l.id === layerId);
-      if (!layer || layer.kind !== "overlay") return;
-      const file = talkingHeadFiles.get(layer.fileId);
-      if (!file) return;
-      setTalkingHeadLayers((prev) => setMattingStatus(prev, layerId, "processing"));
-      startMatting(layer, file);
-    },
-    [talkingHeadLayers, talkingHeadFiles, startMatting],
+    [talkingHeadLayers, talkingHeadFiles],
   );
 
   const removeTalkingHeadLayer = useCallback(
     (id: string) => {
-      // Terminate the matting worker first so it can't deliver a 'done' message that
-      // resurrects a layer we just removed (the postMessage would race the setState).
-      const w = mattingWorkers.current.get(id);
-      if (w) {
-        w.terminate();
-        mattingWorkers.current.delete(id);
-      }
-      mattingExtractors.current.get(id)?.abort();
-      mattingExtractors.current.delete(id);
-      // removeLayer purges the layer's original + matted file blobs in one call.
+      // removeLayer purges the layer's file blob in one call.
       const result = removeLayerPure(talkingHeadLayers, id, talkingHeadFiles);
       setTalkingHeadLayers(result.layers);
       setTalkingHeadFiles(result.files);
@@ -477,8 +313,6 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
       addTalkingHeadLayer,
       removeTalkingHeadLayer,
       renameTalkingHeadLayer,
-      abortMatting,
-      retryMatting,
       disabledOverlayShots,
       disableOverlayShot,
       restoreOverlayShot,
@@ -528,8 +362,6 @@ export function BuildStateProvider({ children }: { children: React.ReactNode }) 
     addTalkingHeadLayer,
     removeTalkingHeadLayer,
     renameTalkingHeadLayer,
-    abortMatting,
-    retryMatting,
     disabledOverlayShots,
     disableOverlayShot,
     restoreOverlayShot,

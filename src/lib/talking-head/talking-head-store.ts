@@ -2,8 +2,6 @@ import {
   FULL_LAYER_TAG,
   makeLayerFileId,
   OVERLAY_LAYER_TAG,
-  type MattingProgress,
-  type MattingStatus,
   type TalkingHeadKind,
   type TalkingHeadLayer,
 } from "./talking-head-types";
@@ -21,8 +19,9 @@ export type StoreOk = { ok: true; layers: TalkingHeadLayer[]; files: Map<string,
 export type RemoveResult = { layers: TalkingHeadLayer[]; files: Map<string, File> };
 
 /** Adds a new layer of the given kind. If one already exists with that kind,
- *  it is REPLACED — both the layer record and any files (original mp4 +
- *  matted webm) belonging to the old one are removed. */
+ *  it is REPLACED — both the layer record and the file belonging to the old
+ *  one are removed. Overlay layers are ready immediately on upload (no
+ *  matting state): the uploaded file is expected to already contain alpha. */
 export function addOrReplaceLayer(
   layers: TalkingHeadLayer[],
   args: { kind: TalkingHeadKind; file: File; label?: string },
@@ -33,7 +32,6 @@ export function addOrReplaceLayer(
   const files = new Map(filesArg);
   if (existing) {
     files.delete(existing.fileId);
-    if (existing.mattedFileId) files.delete(existing.mattedFileId);
   }
 
   const id = newId();
@@ -44,7 +42,6 @@ export function addOrReplaceLayer(
     fileId,
     kind: args.kind,
     ...(args.label ? { label: args.label } : {}),
-    ...(args.kind === "overlay" ? { mattingStatus: "processing" as MattingStatus } : {}),
   };
   files.set(fileId, args.file);
   return { ok: true, layers: [...remainingLayers, layer], files };
@@ -74,35 +71,11 @@ export function removeLayer(
   const files = new Map(filesArg);
   if (target) {
     files.delete(target.fileId);
-    if (target.mattedFileId) files.delete(target.mattedFileId);
   }
   return {
     layers: layers.filter((l) => l.id !== id),
     files,
   };
-}
-
-export function setMattingStatus(
-  layers: TalkingHeadLayer[],
-  id: string,
-  status: MattingStatus,
-  mattedFileId?: string,
-): TalkingHeadLayer[] {
-  return layers.map((l) => {
-    if (l.id !== id) return l;
-    const next: TalkingHeadLayer = { ...l, mattingStatus: status };
-    if (status === "ready" && mattedFileId) next.mattedFileId = mattedFileId;
-    if (status !== "processing") delete next.mattingProgress;
-    return next;
-  });
-}
-
-export function setMattingProgress(
-  layers: TalkingHeadLayer[],
-  id: string,
-  progress: MattingProgress,
-): TalkingHeadLayer[] {
-  return layers.map((l) => (l.id === id ? { ...l, mattingProgress: progress } : l));
 }
 
 /** Backfills `kind: 'full'` on any layer read from older IDB records that

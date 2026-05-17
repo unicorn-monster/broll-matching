@@ -45,10 +45,13 @@ export function PreviewPlayer() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
   const overlayVideoRefs = useRef<Map<string, HTMLVideoElement | null>>(new Map());
-  // Single <video> for the talking-head matted webm. We reuse one element across
-  // sections (re-pointing src as the active section changes) rather than rendering
-  // one per layer — the editor model only allows a single 'overlay' layer at a time.
-  // VP9 alpha requires Chromium; non-Chromium browsers will draw it opaque.
+  // Single <video> for the talking-head overlay (pre-matted by the user). We
+  // reuse one element across sections (re-pointing src as the active section
+  // changes) rather than rendering one per layer — the editor model only allows
+  // a single 'overlay' layer at a time. Alpha is only previewed correctly when
+  // the browser can decode the source's alpha channel (VP9-alpha webm in
+  // Chromium; HEVC-alpha mp4 in Safari). Other browsers will draw opaque, but
+  // the server-side ffmpeg render still composites alpha correctly.
   const mattedOverlayVideoRef = useRef<HTMLVideoElement | null>(null);
   const mattedOverlayCurrentFileIdRef = useRef<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -265,7 +268,7 @@ export function PreviewPlayer() {
         : false;
 
       // Either no overlay configured for this section, the user disabled this shot,
-      // or matting hasn't produced a fileId yet — hide the element and bail.
+      // or the overlay file blob hasn't been registered yet — hide the element and bail.
       const url = overlayClip ? clipUrlsRef.current.get(overlayClip.fileId) : undefined;
       if (!section || !overlayClip || isDisabled || !url) {
         if (!vid.paused) vid.pause();
@@ -284,7 +287,7 @@ export function PreviewPlayer() {
 
       // Per the spec: desiredTime = (sourceSeekMs + local) / 1000, where local is
       // ms elapsed since the section's start. sourceSeekMs is the absolute position
-      // in the matted webm corresponding to this section's audio window.
+      // in the overlay source corresponding to this section's audio window.
       const seekMs = overlayClip.sourceSeekMs ?? section.startMs;
       const local = Math.max(0, audioMs - section.startMs);
       const desiredTime = (seekMs + local) / 1000;

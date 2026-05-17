@@ -1,18 +1,16 @@
 // src/lib/talking-head/talking-head-types.ts
 
 export const TH_LAYER_FILE_ID_PREFIX = "__th_layer__";
-export const TH_MATTED_FILE_ID_PREFIX = "__th_matted__";
 
 export type TalkingHeadKind = "full" | "overlay";
-export type MattingStatus = "processing" | "ready" | "failed";
-
-export interface MattingProgress {
-  framesDone: number;
-  totalFrames: number;
-}
 
 /** One talking-head source: a video file paired with a script tag.
- *  Files (original and, for overlay layers, the matted webm) live in BuildState. */
+ *  Files live in BuildState (talkingHeadFiles, keyed by fileId).
+ *
+ *  For overlay-kind layers the uploaded file IS the matted/transparent video
+ *  (user pre-processes background removal in CapCut → HEVC-alpha mp4). The
+ *  app does no in-browser matting — ffmpeg's overlay filter handles the
+ *  alpha composition server-side. */
 export interface TalkingHeadLayer {
   /** Stable id (uuid). */
   id: string;
@@ -25,12 +23,6 @@ export interface TalkingHeadLayer {
   label?: string;
   /** Layer kind. Defaults to 'full' for legacy records (see store.normalizeLegacyLayer). */
   kind: TalkingHeadKind;
-  /** Synthetic id for the matted webm file. Only set on overlay layers when matting succeeded. */
-  mattedFileId?: string;
-  /** Overlay-layer matting state machine. Absent on full layers. */
-  mattingStatus?: MattingStatus;
-  /** Overlay-layer matting progress while `mattingStatus === 'processing'`. */
-  mattingProgress?: MattingProgress;
 }
 
 export function makeLayerFileId(layerId: string): string {
@@ -39,14 +31,6 @@ export function makeLayerFileId(layerId: string): string {
 
 export function isLayerFileId(fileId: string): boolean {
   return fileId.startsWith(TH_LAYER_FILE_ID_PREFIX);
-}
-
-export function makeMattedFileId(layerId: string): string {
-  return `${TH_MATTED_FILE_ID_PREFIX}${layerId}`;
-}
-
-export function isMattedFileId(fileId: string): boolean {
-  return fileId.startsWith(TH_MATTED_FILE_ID_PREFIX);
 }
 
 export const FULL_LAYER_TAG = "talking-head-full";
